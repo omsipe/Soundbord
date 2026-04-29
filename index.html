@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soundboard</title>
+<style>
+  :root {
+    --bg: #141414;
+    --panel: #1f1f1f;
+    --panel-2: #292929;
+    --accent: #ff6b35;
+    --accent-dim: #ff6b3530;
+    --text: #f0f0f0;
+    --muted: #888;
+    --border: #333;
+    --green: #4ade80;
+    --red: #ef4444;
+    --yellow: #fbbf24;
+    --blue: #3b82f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: 20px;
+    min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+    margin-bottom: 24px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  h1 .dot { color: var(--accent); }
+  .master {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--panel); padding: 10px 16px;
+    border-radius: 8px; border: 1px solid var(--border);
+  }
+  .master label {
+    font-size: 12px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button.btn {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); padding: 8px 14px;
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+    font-weight: 500; transition: all 0.15s;
+  }
+  button.btn:hover { background: var(--accent); border-color: var(--accent); }
+  button.btn.danger:hover { background: var(--red); border-color: var(--red); }
+  button.btn.toggle { background: var(--blue); border-color: var(--blue); color: white; }
+  button.btn.toggle:hover { background: #2563eb; border-color: #2563eb; }
+
+  .bridge-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel); padding: 8px 14px;
+    border-radius: 8px; border: 1px solid var(--border);
+    cursor: pointer; font-size: 12px;
+    transition: all 0.15s;
+  }
+  .bridge-pill:hover { border-color: var(--muted); }
+  .bridge-status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    box-shadow: 0 0 4px var(--muted);
+  }
+  .bridge-pill.connected .bridge-status-dot {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+  }
+  .bridge-pill.error .bridge-status-dot {
+    background: var(--red);
+    box-shadow: 0 0 6px var(--red);
+  }
+  .bridge-pill.connecting .bridge-status-dot {
+    background: var(--yellow);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+  .bridge-label {
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    font-size: 11px;
+  }
+  .bridge-pill.connected .bridge-label { color: var(--text); }
+
+  .bridge-modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .bridge-modal-backdrop.visible { display: flex; }
+  .bridge-modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    width: min(500px, 90vw);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .bridge-modal h2 { margin: 0; font-size: 16px; }
+  .bridge-modal label { font-size: 12px; color: var(--muted); }
+  .bridge-modal input[type="text"] {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: ui-monospace, monospace;
+    outline: none;
+    width: 100%;
+  }
+  .bridge-modal input[type="text"]:focus { border-color: var(--accent); }
+  .bridge-modal-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .bridge-modal-info {
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--panel-2);
+    padding: 10px 12px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    line-height: 1.5;
+    font-family: ui-monospace, monospace;
+  }
+  .bridge-modal-info code {
+    color: var(--accent);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+
+  .pad {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.15s;
+    position: relative;
+  }
+  .pad.playing {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-dim);
+  }
+  .pad.error { border-color: var(--red); }
+  .pad.drag-over {
+    border-color: var(--blue); background: #1a2332;
+    box-shadow: 0 0 0 2px var(--blue);
+  }
+  .pad.remote-trigger {
+    animation: remote-flash 0.4s ease-out;
+  }
+  @keyframes remote-flash {
+    0% { box-shadow: 0 0 0 2px var(--blue), 0 0 25px var(--blue); }
+    100% { box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-dim); }
+  }
+
+  .pad-header { display: flex; align-items: center; gap: 8px; }
+  .pad-index {
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    min-width: 26px;
+    text-align: center;
+  }
+  .pad-name {
+    flex: 1; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 14px; font-weight: 600;
+    padding: 6px 10px; border-radius: 5px;
+    outline: none; min-width: 0;
+    transition: border-color 0.15s;
+  }
+  .pad-name:focus { border-color: var(--accent); }
+  .pad-name::placeholder { color: var(--muted); font-weight: 400; }
+  .pad-remove {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    cursor: pointer; font-size: 16px; padding: 0 8px;
+    line-height: 1; border-radius: 5px; height: 30px;
+  }
+  .pad-remove:hover { color: var(--red); border-color: var(--red); background: var(--panel-2); }
+
+  .file-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
+  .file-label {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); padding: 5px 10px; border-radius: 5px;
+    cursor: pointer; font-size: 12px; transition: all 0.15s;
+  }
+  .file-label:hover { background: var(--accent); border-color: var(--accent); }
+  .file-input { display: none; }
+
+  .play-btn {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); padding: 16px;
+    border-radius: 8px; cursor: pointer; font-size: 15px;
+    font-weight: 600; transition: all 0.1s;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; user-select: none;
+    min-height: 56px;
+  }
+  .play-btn:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+  .play-btn:active:not(:disabled) { transform: scale(0.98); }
+  .play-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .play-btn.playing { background: var(--accent); border-color: var(--accent); color: white; }
+  .play-btn.loading { color: var(--yellow); }
+  .play-btn.fading { background: #d4541f; border-color: #d4541f; color: white; }
+  .play-btn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+  .trim-section { display: flex; flex-direction: column; gap: 4px; }
+  .trim-section-label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .trim-slider {
+    position: relative; height: 22px; margin: 0 8px;
+    user-select: none; touch-action: none;
+  }
+  .trim-slider.disabled { opacity: 0.35; pointer-events: none; }
+  .trim-track {
+    position: absolute; top: 50%; left: 0; right: 0;
+    height: 4px; transform: translateY(-50%);
+    background: var(--border); border-radius: 2px;
+  }
+  .trim-range {
+    position: absolute; top: 50%;
+    height: 4px; transform: translateY(-50%);
+    background: var(--accent); border-radius: 2px;
+  }
+  .trim-playhead {
+    position: absolute; top: 50%;
+    width: 2px; height: 14px;
+    transform: translate(-50%, -50%);
+    background: var(--green); border-radius: 1px;
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .trim-playhead.visible { opacity: 1; }
+  .trim-handle {
+    position: absolute; top: 50%;
+    width: 14px; height: 14px;
+    transform: translate(-50%, -50%);
+    background: var(--accent);
+    border: 2px solid var(--bg);
+    border-radius: 50%;
+    cursor: grab; z-index: 2;
+  }
+  .trim-handle:active { cursor: grabbing; }
+  .trim-handle:hover { background: #ff8a5c; }
+  .trim-display {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--muted);
+    font-family: ui-monospace, monospace;
+  }
+  .trim-display .trim-duration { color: var(--accent); }
+
+  .volume-row { display: flex; align-items: center; gap: 10px; }
+  .volume-icon { color: var(--muted); font-size: 12px; width: 16px; text-align: center; }
+  input[type="range"] {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    height: 4px; background: var(--border); border-radius: 2px;
+    outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; background: var(--accent);
+    border-radius: 50%; cursor: pointer; border: 2px solid var(--bg);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; background: var(--accent);
+    border-radius: 50%; cursor: pointer; border: 2px solid var(--bg);
+  }
+  .volume-value { font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; min-width: 32px; text-align: right; }
+  .options-row { display: flex; gap: 12px; font-size: 11px; color: var(--muted); }
+  .checkbox { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+  .checkbox input { accent-color: var(--accent); cursor: pointer; }
+
+  .fade-row {
+    display: flex; gap: 10px; align-items: center;
+    font-size: 11px; color: var(--muted); flex-wrap: wrap;
+  }
+  .fade-label { text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; font-size: 10px; }
+  .fade-input { display: flex; align-items: center; gap: 4px; }
+  .fade-input input {
+    width: 50px;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 5px; font-size: 11px;
+    font-family: ui-monospace, monospace; text-align: right;
+  }
+  .fade-input input:focus { outline: none; border-color: var(--accent); }
+  .fade-input input::-webkit-outer-spin-button,
+  .fade-input input::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); grid-column: 1 / -1; }
+  .progress {
+    position: absolute; bottom: 0; left: 0; height: 2px;
+    background: var(--accent); border-radius: 0 0 10px 10px;
+    width: 0%; transition: width 0.1s linear;
+  }
+  .pad-error {
+    background: #2a1414; border: 1px solid var(--red);
+    color: #ffb4b4; padding: 6px 8px; border-radius: 4px;
+    font-size: 11px; font-family: ui-monospace, monospace;
+    word-break: break-word; display: none;
+  }
+  .pad-error.visible { display: block; }
+
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 30px 20px; text-align: center;
+    color: var(--muted); font-size: 13px;
+    cursor: pointer; transition: all 0.15s;
+    background: transparent; min-height: 200px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+  }
+  .drop-zone:hover { border-color: var(--muted); color: var(--text); }
+  .drop-zone.drag-over { border-color: var(--blue); background: #1a2332; color: var(--text); }
+  .drop-zone-icon { font-size: 28px; opacity: 0.5; }
+
+  /* ---------- Performance Mode ---------- */
+  body.performance-mode .pad-header { display: none; }
+  body.performance-mode .file-row,
+  body.performance-mode .volume-row,
+  body.performance-mode .options-row,
+  body.performance-mode .fade-row,
+  body.performance-mode .trim-section,
+  body.performance-mode .pad-error,
+  body.performance-mode .drop-zone {
+    display: none;
+  }
+  body.performance-mode .pad {
+    padding: 0; border-color: transparent; background: transparent; gap: 0;
+  }
+  body.performance-mode .pad.playing { border-color: transparent; box-shadow: none; }
+  body.performance-mode .pad.error { border-color: transparent; }
+  body.performance-mode .play-btn {
+    width: 100%; min-height: 140px;
+    font-size: 22px; padding: 24px 16px;
+    border-radius: 12px; border-width: 2px;
+    flex-direction: column; gap: 10px; position: relative;
+  }
+  body.performance-mode .play-btn::before {
+    content: attr(data-index);
+    position: absolute; top: 8px; left: 10px;
+    font-size: 11px; opacity: 0.5;
+    font-family: ui-monospace, monospace;
+    font-weight: 400;
+  }
+  body.performance-mode .play-btn-name {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+  }
+  body.performance-mode .play-btn-icon { font-size: 16px; opacity: 0.85; }
+  body.performance-mode .grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  body.performance-mode .progress { border-radius: 0 0 12px 12px; height: 3px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Soundboard<span class="dot">.</span></h1>
+    <div class="master">
+      <label for="master-vol">Master</label>
+      <input type="range" id="master-vol" min="0" max="100" value="100">
+      <span class="volume-value" id="master-val">100%</span>
+    </div>
+    <div class="bridge-pill" id="bridge-pill" title="Bridge / Companion-Anbindung — klicken zum Konfigurieren">
+      <span class="bridge-status-dot"></span>
+      <span class="bridge-label" id="bridge-label">Bridge: aus</span>
+    </div>
+    <div class="controls">
+      <button class="btn toggle" id="mode-toggle">🎛 Edit-Mode</button>
+      <button class="btn" id="add-pad">+ Pad hinzufügen</button>
+      <button class="btn" id="stop-all">Alles stoppen</button>
+      <button class="btn danger" id="clear-all">Zurücksetzen</button>
+    </div>
+  </header>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="bridge-modal-backdrop" id="bridge-modal-backdrop">
+    <div class="bridge-modal">
+      <h2>Companion-Bridge</h2>
+
+      <!-- Electron-only: Bridge-Server Steuerung -->
+      <div id="electron-server-section" style="display:none;flex-direction:column;gap:10px;padding:12px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="server-dot" style="width:10px;height:10px;border-radius:50%;background:var(--muted);box-shadow:0 0 6px var(--muted);"></span>
+          <span id="server-status-text" style="font-size:13px;font-weight:600;">Bridge-Server: gestoppt</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn" id="bridge-server-start" style="background:#16a34a;border-color:#16a34a;color:white;">▶ Bridge starten</button>
+          <button class="btn" id="bridge-server-stop" style="background:#ef4444;border-color:#ef4444;color:white;">■ Bridge stoppen</button>
+        </div>
+        <div id="server-info" style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;"></div>
+      </div>
+
+      <!-- Browser-only: manuelle URL-Konfiguration -->
+      <div id="browser-config-section">
+        <div>
+          <label for="bridge-url">Bridge-URL</label>
+          <input type="text" id="bridge-url" placeholder="http://localhost:8765">
+        </div>
+        <div class="bridge-modal-row" style="margin-top:10px;">
+          <label class="checkbox" style="font-size:12px;color:var(--text);">
+            <input type="checkbox" id="bridge-enabled"> Verbindung aktiv
+          </label>
+        </div>
+      </div>
+
+      <div class="bridge-modal-info">
+        Companion-Aktionen (Generic HTTP):<br>
+        <code>GET {URL}/trigger/1</code> — Pad 1 starten<br>
+        <code>GET {URL}/stop/1</code> — Pad 1 stoppen<br>
+        <code>GET {URL}/toggle/1</code> — Pad 1 toggeln<br>
+        <code>GET {URL}/trigger?name=intro</code> — nach Namen<br>
+        <code>GET {URL}/stop-all</code> — alle stoppen<br><br>
+        Status &amp; Pad-Liste: <code>GET {URL}/api/pads</code>
+      </div>
+      <div class="bridge-modal-row">
+        <button class="btn" id="bridge-save">Speichern</button>
+        <button class="btn" id="bridge-close" style="margin-left:auto;">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ============ Globals ============
+  let padCounter = 0;
+  let masterVolume = 1.0;
+  let viewMode = 'edit';
+  const pads = new Map();
+  const padOrder = []; // Reihenfolge der Pad-IDs für stabile Index-Zuordnung
+
+  const grid = document.getElementById('grid');
+  const masterVol = document.getElementById('master-vol');
+  const masterVal = document.getElementById('master-val');
+  const modeToggle = document.getElementById('mode-toggle');
+
+  // ============ Helpers ============
+  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(v, hi)); }
+
+  function formatTime(seconds) {
+    if (!isFinite(seconds) || seconds < 0) seconds = 0;
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function lsGet(key, fallback) {
+    try { const v = localStorage.getItem(key); return v !== null ? v : fallback; }
+    catch (_) { return fallback; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); } catch (_) {}
+  }
+
+  // ============ Bridge Connection ============
+  const bridgePill = document.getElementById('bridge-pill');
+  const bridgeLabel = document.getElementById('bridge-label');
+  const bridgeModal = document.getElementById('bridge-modal-backdrop');
+  const bridgeUrlInput = document.getElementById('bridge-url');
+  const bridgeEnabledCheck = document.getElementById('bridge-enabled');
+
+  const defaultBridgeUrl = (() => {
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      return location.origin;
+    }
+    return 'http://localhost:8765';
+  })();
+
+  let bridgeUrl = lsGet('soundboard.bridgeUrl', defaultBridgeUrl);
+  let bridgeEnabled = lsGet('soundboard.bridgeEnabled', '0') === '1';
+  let bridgeEs = null;
+  let bridgeReconnectTimer = null;
+  let bridgeStatus = 'off'; // 'off' | 'connecting' | 'connected' | 'error'
+
+  function setBridgeStatus(status) {
+    bridgeStatus = status;
+    bridgePill.classList.remove('connected', 'connecting', 'error');
+    if (status === 'connected') {
+      bridgePill.classList.add('connected');
+      bridgeLabel.textContent = 'Bridge: verbunden';
+    } else if (status === 'connecting') {
+      bridgePill.classList.add('connecting');
+      bridgeLabel.textContent = 'Bridge: verbinde…';
+    } else if (status === 'error') {
+      bridgePill.classList.add('error');
+      bridgeLabel.textContent = 'Bridge: nicht erreichbar';
+    } else {
+      bridgeLabel.textContent = 'Bridge: aus';
+    }
+  }
+
+  function disconnectBridge() {
+    if (bridgeReconnectTimer) {
+      clearTimeout(bridgeReconnectTimer);
+      bridgeReconnectTimer = null;
+    }
+    if (bridgeEs) {
+      try { bridgeEs.close(); } catch (_) {}
+      bridgeEs = null;
+    }
+    setBridgeStatus('off');
+  }
+
+  function connectBridge() {
+    if (!bridgeEnabled) {
+      disconnectBridge();
+      return;
+    }
+    disconnectBridge();
+    setBridgeStatus('connecting');
+    let es;
+    try {
+      es = new EventSource(bridgeUrl.replace(/\/$/, '') + '/sse');
+    } catch (err) {
+      console.warn('EventSource error:', err);
+      setBridgeStatus('error');
+      scheduleBridgeReconnect();
+      return;
+    }
+    bridgeEs = es;
+
+    es.addEventListener('hello', () => {
+      setBridgeStatus('connected');
+      sendPadList();
+    });
+
+    es.addEventListener('command', (ev) => {
+      try {
+        const cmd = JSON.parse(ev.data);
+        handleBridgeCommand(cmd);
+      } catch (err) {
+        console.warn('Bad command from bridge:', err);
+      }
+    });
+
+    es.addEventListener('open', () => {
+      // Falls 'hello' nicht ankommt
+      if (bridgeStatus !== 'connected') setBridgeStatus('connected');
+    });
+
+    es.addEventListener('error', () => {
+      // EventSource versucht von selbst zu reconnecten, aber wir zeigen den Status
+      if (es.readyState === EventSource.CLOSED) {
+        setBridgeStatus('error');
+        scheduleBridgeReconnect();
+      } else {
+        setBridgeStatus('connecting');
+      }
+    });
+  }
+
+  function scheduleBridgeReconnect() {
+    if (!bridgeEnabled) return;
+    if (bridgeReconnectTimer) return;
+    bridgeReconnectTimer = setTimeout(() => {
+      bridgeReconnectTimer = null;
+      connectBridge();
+    }, 3000);
+  }
+
+  // Pad-Liste an Bridge schicken (HTTP POST)
+  let padListSendTimer = null;
+  function schedulePadListSend() {
+    if (padListSendTimer) return;
+    padListSendTimer = setTimeout(() => {
+      padListSendTimer = null;
+      sendPadList();
+    }, 250);
+  }
+
+  function sendPadList() {
+    if (!bridgeEnabled || bridgeStatus !== 'connected') return;
+    const list = padOrder.map((id, idx) => {
+      const p = pads.get(id);
+      if (!p) return null;
+      return {
+        index: idx + 1,
+        id: id,
+        name: p.name,
+        file: p.fileName || null,
+        duration: p.duration || 0,
+        trim_start: p.trimStart || 0,
+        trim_end: p.trimEnd || 0,
+        loop: !!p.loop
+      };
+    }).filter(Boolean);
+    fetch(bridgeUrl.replace(/\/$/, '') + '/pads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pads: list })
+    }).catch(() => { /* ignore */ });
+  }
+
+  function sendStateUpdate(id) {
+    if (!bridgeEnabled || bridgeStatus !== 'connected') return;
+    const p = pads.get(id);
+    if (!p) return;
+    fetch(bridgeUrl.replace(/\/$/, '') + '/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: id,
+        name: p.name,
+        playing: p.playing,
+        fading: p.fading
+      })
+    }).catch(() => {});
+  }
+
+  function findPadByCmd(cmd) {
+    if (cmd.name) {
+      for (const id of padOrder) {
+        const p = pads.get(id);
+        if (p && p.name === cmd.name) return p;
+      }
+    }
+    if (typeof cmd.index === 'number' && cmd.index >= 0 && cmd.index < padOrder.length) {
+      return pads.get(padOrder[cmd.index]);
+    }
+    return null;
+  }
+
+  function flashPad(p) {
+    if (!p || !p.padEl) return;
+    p.padEl.classList.remove('remote-trigger');
+    void p.padEl.offsetWidth; // reflow um Animation zu re-triggern
+    p.padEl.classList.add('remote-trigger');
+  }
+
+  function handleBridgeCommand(cmd) {
+    if (cmd.type === 'stop-all') {
+      stopAllPads();
+      return;
+    }
+    const p = findPadByCmd(cmd);
+    if (!p) {
+      console.warn('Bridge: Pad nicht gefunden', cmd);
+      return;
+    }
+    flashPad(p);
+    if (cmd.type === 'trigger') p.trigger && p.trigger();
+    else if (cmd.type === 'stop') p.stop && p.stop();
+    else if (cmd.type === 'toggle') p.toggle && p.toggle();
+  }
+
+  function stopAllPads() {
+    pads.forEach((p, id) => {
+      if (p.fadeAnimId !== null) {
+        cancelAnimationFrame(p.fadeAnimId);
+        p.fadeAnimId = null;
+      }
+      p.fading = null;
+      if (p.playing && p.audio) {
+        try { p.audio.pause(); } catch (_) {}
+        try { p.audio.currentTime = p.trimStart || 0; } catch (_) {}
+        p.playing = false;
+        const padEl = p.padEl;
+        if (padEl) {
+          padEl.classList.remove('playing');
+          const pb = padEl.querySelector('.play-btn');
+          pb.classList.remove('playing');
+          pb.classList.remove('fading');
+          padEl.querySelector('.play-btn-icon').textContent = '▶';
+          padEl.querySelector('.play-btn-name').textContent = p.name;
+          padEl.querySelector('.progress').style.width = '0%';
+          padEl.querySelector('.trim-playhead').classList.remove('visible');
+        }
+        sendStateUpdate(id);
+      }
+    });
+  }
+
+  // ============ Bridge Modal ============
+  bridgePill.addEventListener('click', () => {
+    bridgeUrlInput.value = bridgeUrl;
+    bridgeEnabledCheck.checked = bridgeEnabled;
+    bridgeModal.classList.add('visible');
+  });
+  document.getElementById('bridge-close').addEventListener('click', () => {
+    bridgeModal.classList.remove('visible');
+  });
+  document.getElementById('bridge-save').addEventListener('click', () => {
+    if (window.electronAPI) {
+      // Electron: URL-Felder existieren zwar, sind aber versteckt — Save schließt einfach
+      bridgeModal.classList.remove('visible');
+      return;
+    }
+    const newUrl = bridgeUrlInput.value.trim() || defaultBridgeUrl;
+    const newEnabled = bridgeEnabledCheck.checked;
+    bridgeUrl = newUrl;
+    bridgeEnabled = newEnabled;
+    lsSet('soundboard.bridgeUrl', bridgeUrl);
+    lsSet('soundboard.bridgeEnabled', bridgeEnabled ? '1' : '0');
+    bridgeModal.classList.remove('visible');
+    if (bridgeEnabled) connectBridge();
+    else disconnectBridge();
+  });
+  bridgeModal.addEventListener('click', (e) => {
+    if (e.target === bridgeModal) bridgeModal.classList.remove('visible');
+  });
+
+  // ============ Master / Mode ============
+  masterVol.addEventListener('input', (e) => {
+    masterVolume = e.target.value / 100;
+    masterVal.textContent = e.target.value + '%';
+    pads.forEach(p => {
+      if (p.audio && !p.fading) {
+        p.audio.volume = clamp01(p.volume * masterVolume);
+      }
+    });
+  });
+
+  modeToggle.addEventListener('click', () => {
+    viewMode = viewMode === 'edit' ? 'performance' : 'edit';
+    document.body.classList.toggle('performance-mode', viewMode === 'performance');
+    modeToggle.textContent = viewMode === 'edit' ? '🎛 Edit-Mode' : '🎚 Performance-Mode';
+    refreshDropZone();
+  });
+
+  // ============ Audio Helpers ============
+  function describeMediaError(audio) {
+    if (!audio.error) return 'Unbekannter Audio-Fehler';
+    const codes = {
+      1: 'MEDIA_ERR_ABORTED — Wiedergabe abgebrochen',
+      2: 'MEDIA_ERR_NETWORK — Netzwerkfehler beim Laden',
+      3: 'MEDIA_ERR_DECODE — Datei konnte nicht dekodiert werden',
+      4: 'MEDIA_ERR_SRC_NOT_SUPPORTED — Format wird vom Browser nicht unterstützt'
+    };
+    const base = codes[audio.error.code] || ('Code ' + audio.error.code);
+    return base + (audio.error.message ? ' — ' + audio.error.message : '');
+  }
+
+  function loadFileAsSource(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('FileReader-Fehler'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function isAudioFile(file) {
+    if (!file) return false;
+    if (file.type && file.type.startsWith('audio/')) return true;
+    const name = (file.name || '').toLowerCase();
+    return /\.(mp3|wav|ogg|m4a|flac|aac|opus|webm)$/.test(name);
+  }
+
+  function updatePadIndices() {
+    padOrder.forEach((id, idx) => {
+      const p = pads.get(id);
+      if (!p || !p.padEl) return;
+      const indexEl = p.padEl.querySelector('.pad-index');
+      if (indexEl) indexEl.textContent = '#' + (idx + 1);
+      const playBtn = p.padEl.querySelector('.play-btn');
+      if (playBtn) playBtn.dataset.index = '#' + (idx + 1);
+    });
+  }
+
+  // ============ Pad Creation ============
+  function createPad() {
+    const id = ++padCounter;
+    const padState = {
+      audio: null,
+      volume: 0.8,
+      name: '',
+      fileName: '',
+      loop: false,
+      playing: false,
+      fading: null,
+      fadeAnimId: null,
+      fadeInMs: 0,
+      fadeOutMs: 0,
+      autoFadeStarted: false,
+      trimStart: 0,
+      trimEnd: 0,
+      duration: 0,
+      ready: false,
+      padEl: null,
+      trigger: null,
+      stop: null,
+      toggle: null
+    };
+    pads.set(id, padState);
+    padOrder.push(id);
+
+    const pad = document.createElement('div');
+    pad.className = 'pad';
+    pad.dataset.id = id;
+    padState.padEl = pad;
+    pad.innerHTML = `
+      <div class="pad-header">
+        <span class="pad-index">#${padOrder.length}</span>
+        <input class="pad-name" type="text" placeholder="Name eingeben…" maxlength="30">
+        <button class="pad-remove" title="Entfernen">×</button>
+      </div>
+      <div class="file-row">
+        <label class="file-label">
+          Datei wählen
+          <input type="file" class="file-input" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac">
+        </label>
+        <span class="file-name">keine Datei (oder Datei reinziehen)</span>
+      </div>
+      <button class="play-btn" data-index="#${padOrder.length}" disabled>
+        <span class="play-btn-icon">▶</span>
+        <span class="play-btn-name">Pad ${id}</span>
+      </button>
+      <div class="trim-section">
+        <div class="trim-section-label">
+          <span>Trim Start / End</span>
+          <button class="reset-trim" type="button" style="background:transparent;border:none;color:var(--muted);font-size:10px;cursor:pointer;padding:0;text-transform:uppercase;letter-spacing:0.05em;">↺ Reset</button>
+        </div>
+        <div class="trim-slider disabled">
+          <div class="trim-track"></div>
+          <div class="trim-range" style="left:0%;width:100%;"></div>
+          <div class="trim-playhead" style="left:0%;"></div>
+          <div class="trim-handle trim-start-handle" style="left:0%;"></div>
+          <div class="trim-handle trim-end-handle" style="left:100%;"></div>
+        </div>
+        <div class="trim-display">
+          <span class="trim-time-start">0:00</span>
+          <span class="trim-duration">— 0:00 —</span>
+          <span class="trim-time-end">0:00</span>
+        </div>
+      </div>
+      <div class="volume-row">
+        <span class="volume-icon">🔊</span>
+        <input type="range" class="vol-slider" min="0" max="100" value="80">
+        <span class="volume-value vol-val">80%</span>
+      </div>
+      <div class="fade-row">
+        <span class="fade-label">Fade</span>
+        <label class="fade-input">In <input type="number" class="fade-in" min="0" max="60" step="0.1" value="0">s</label>
+        <label class="fade-input">Out <input type="number" class="fade-out" min="0" max="60" step="0.1" value="0">s</label>
+      </div>
+      <div class="options-row">
+        <label class="checkbox"><input type="checkbox" class="loop-check"> Loop (innerhalb Trim)</label>
+      </div>
+      <div class="pad-error"></div>
+      <div class="progress"></div>
+    `;
+
+    const dropZone = grid.querySelector('.drop-zone');
+    if (dropZone) grid.insertBefore(pad, dropZone);
+    else grid.appendChild(pad);
+
+    const nameInput = pad.querySelector('.pad-name');
+    const fileInput = pad.querySelector('.file-input');
+    const fileNameSpan = pad.querySelector('.file-name');
+    const playBtn = pad.querySelector('.play-btn');
+    const playBtnName = pad.querySelector('.play-btn-name');
+    const playBtnIcon = pad.querySelector('.play-btn-icon');
+    const volSlider = pad.querySelector('.vol-slider');
+    const volVal = pad.querySelector('.vol-val');
+    const loopCheck = pad.querySelector('.loop-check');
+    const fadeInInput = pad.querySelector('.fade-in');
+    const fadeOutInput = pad.querySelector('.fade-out');
+    const removeBtn = pad.querySelector('.pad-remove');
+    const progress = pad.querySelector('.progress');
+    const errorBox = pad.querySelector('.pad-error');
+
+    const trimSliderEl = pad.querySelector('.trim-slider');
+    const trimRangeEl = pad.querySelector('.trim-range');
+    const trimPlayheadEl = pad.querySelector('.trim-playhead');
+    const trimStartHandle = pad.querySelector('.trim-start-handle');
+    const trimEndHandle = pad.querySelector('.trim-end-handle');
+    const trimTimeStart = pad.querySelector('.trim-time-start');
+    const trimTimeEnd = pad.querySelector('.trim-time-end');
+    const trimDuration = pad.querySelector('.trim-duration');
+    const resetTrimBtn = pad.querySelector('.reset-trim');
+
+    padState.name = `Pad ${id}`;
+    nameInput.value = padState.name;
+    playBtnName.textContent = padState.name;
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.add('visible');
+      pad.classList.add('error');
+    }
+    function clearError() {
+      errorBox.classList.remove('visible');
+      pad.classList.remove('error');
+    }
+    function setPlayIcon(t) { playBtnIcon.textContent = t; }
+    function setPlayLabel(t) { playBtnName.textContent = t; }
+
+    function updateTrimUI() {
+      const dur = padState.duration || 1;
+      const startPct = clamp(padState.trimStart / dur * 100, 0, 100);
+      const endPct = clamp(padState.trimEnd / dur * 100, 0, 100);
+      trimStartHandle.style.left = startPct + '%';
+      trimEndHandle.style.left = endPct + '%';
+      trimRangeEl.style.left = startPct + '%';
+      trimRangeEl.style.width = (endPct - startPct) + '%';
+      trimTimeStart.textContent = formatTime(padState.trimStart);
+      trimTimeEnd.textContent = formatTime(padState.trimEnd);
+      trimDuration.textContent = '— ' + formatTime(padState.trimEnd - padState.trimStart) + ' —';
+    }
+
+    function updatePlayhead() {
+      if (!padState.audio || !padState.duration || !padState.playing) {
+        trimPlayheadEl.classList.remove('visible');
+        return;
+      }
+      const pct = clamp(padState.audio.currentTime / padState.duration * 100, 0, 100);
+      trimPlayheadEl.style.left = pct + '%';
+      trimPlayheadEl.classList.add('visible');
+    }
+
+    function setTrimEnabled(enabled) {
+      trimSliderEl.classList.toggle('disabled', !enabled);
+    }
+
+    function makeHandleDraggable(handle, which) {
+      function startDrag(e) {
+        if (!padState.duration) return;
+        e.preventDefault();
+        const rect = trimSliderEl.getBoundingClientRect();
+        const minGap = 0.05;
+        function move(ev) {
+          const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+          const pct = clamp((clientX - rect.left) / rect.width, 0, 1);
+          const time = pct * padState.duration;
+          if (which === 'start') {
+            padState.trimStart = clamp(time, 0, padState.trimEnd - minGap);
+          } else {
+            padState.trimEnd = clamp(time, padState.trimStart + minGap, padState.duration);
+          }
+          updateTrimUI();
+        }
+        function end() {
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', end);
+          document.removeEventListener('touchmove', move);
+          document.removeEventListener('touchend', end);
+          schedulePadListSend();
+        }
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', end);
+        document.addEventListener('touchmove', move, { passive: false });
+        document.addEventListener('touchend', end);
+      }
+      handle.addEventListener('mousedown', startDrag);
+      handle.addEventListener('touchstart', startDrag, { passive: false });
+    }
+    makeHandleDraggable(trimStartHandle, 'start');
+    makeHandleDraggable(trimEndHandle, 'end');
+
+    resetTrimBtn.addEventListener('click', () => {
+      if (!padState.duration) return;
+      padState.trimStart = 0;
+      padState.trimEnd = padState.duration;
+      updateTrimUI();
+      schedulePadListSend();
+    });
+
+    function cancelFade() {
+      if (padState.fadeAnimId !== null) {
+        cancelAnimationFrame(padState.fadeAnimId);
+        padState.fadeAnimId = null;
+      }
+      padState.fading = null;
+      playBtn.classList.remove('fading');
+    }
+
+    function runFade(fromVol, toVol, durationMs, onComplete) {
+      cancelFade();
+      if (durationMs <= 0 || !padState.audio) {
+        if (padState.audio) padState.audio.volume = clamp01(toVol);
+        if (onComplete) onComplete();
+        return;
+      }
+      const startTime = performance.now();
+      function step(now) {
+        if (!padState.audio) {
+          padState.fadeAnimId = null;
+          padState.fading = null;
+          return;
+        }
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / durationMs, 1);
+        padState.audio.volume = clamp01(fromVol + (toVol - fromVol) * progress);
+        if (progress < 1) {
+          padState.fadeAnimId = requestAnimationFrame(step);
+        } else {
+          padState.fadeAnimId = null;
+          padState.fading = null;
+          playBtn.classList.remove('fading');
+          if (onComplete) onComplete();
+        }
+      }
+      padState.fadeAnimId = requestAnimationFrame(step);
+    }
+
+    function resetUiToStopped() {
+      cancelFade();
+      const wasPlaying = padState.playing;
+      padState.playing = false;
+      padState.autoFadeStarted = false;
+      pad.classList.remove('playing');
+      playBtn.classList.remove('playing');
+      setPlayIcon('▶');
+      setPlayLabel(padState.name);
+      progress.style.width = '0%';
+      trimPlayheadEl.classList.remove('visible');
+      if (wasPlaying) sendStateUpdate(id);
+    }
+
+    async function startPlayback() {
+      clearError();
+      padState.autoFadeStarted = false;
+      try { padState.audio.currentTime = padState.trimStart || 0; } catch (_) {}
+
+      const targetVol = clamp01(padState.volume * masterVolume);
+      if (padState.fadeInMs > 0) {
+        padState.audio.volume = 0;
+      } else {
+        padState.audio.volume = targetVol;
+      }
+
+      try {
+        await padState.audio.play();
+        padState.playing = true;
+        pad.classList.add('playing');
+        playBtn.classList.add('playing');
+        setPlayIcon('■');
+        sendStateUpdate(id);
+
+        if (padState.fadeInMs > 0) {
+          padState.fading = 'in';
+          playBtn.classList.add('fading');
+          setPlayLabel('↗ ' + padState.name);
+          runFade(0, targetVol, padState.fadeInMs, () => {
+            if (padState.audio && padState.playing) {
+              padState.audio.volume = clamp01(padState.volume * masterVolume);
+            }
+            setPlayLabel(padState.name);
+          });
+        }
+      } catch (err) {
+        showError('Wiedergabe-Fehler: ' + (err && err.message ? err.message : String(err)));
+        resetUiToStopped();
+      }
+    }
+
+    function startStop({ immediate = false } = {}) {
+      if (!padState.audio) return;
+      if (immediate || padState.fadeOutMs <= 0) {
+        cancelFade();
+        try { padState.audio.pause(); } catch (_) {}
+        try { padState.audio.currentTime = padState.trimStart || 0; } catch (_) {}
+        resetUiToStopped();
+        return;
+      }
+      const fromVol = padState.audio.volume;
+      padState.fading = 'out';
+      playBtn.classList.add('fading');
+      setPlayLabel('↘ ' + padState.name);
+      sendStateUpdate(id);
+      runFade(fromVol, 0, padState.fadeOutMs, () => {
+        try { padState.audio.pause(); } catch (_) {}
+        try { padState.audio.currentTime = padState.trimStart || 0; } catch (_) {}
+        resetUiToStopped();
+      });
+    }
+
+    // Externe Kontroll-Methoden für Bridge
+    padState.trigger = () => {
+      if (!padState.audio || !padState.ready) return;
+      // Trigger = immer von vorne starten, auch wenn schon spielt
+      if (padState.playing || padState.fading) {
+        cancelFade();
+        try { padState.audio.pause(); } catch (_) {}
+        padState.playing = false;
+      }
+      startPlayback();
+    };
+    padState.stop = () => {
+      if (!padState.audio || !padState.ready) return;
+      if (padState.fading === 'out') startStop({ immediate: true });
+      else if (padState.playing || padState.fading === 'in') startStop();
+    };
+    padState.toggle = () => {
+      if (!padState.audio || !padState.ready) return;
+      if (padState.fading === 'out') { startStop({ immediate: true }); return; }
+      if (padState.fading === 'in' || padState.playing) { startStop(); return; }
+      startPlayback();
+    };
+
+    nameInput.addEventListener('input', e => {
+      padState.name = e.target.value || `Pad ${id}`;
+      if (!padState.fading) setPlayLabel(padState.name);
+      schedulePadListSend();
+    });
+
+    fadeInInput.addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      padState.fadeInMs = isFinite(v) && v >= 0 ? v * 1000 : 0;
+    });
+    fadeOutInput.addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      padState.fadeOutMs = isFinite(v) && v >= 0 ? v * 1000 : 0;
+    });
+
+    async function loadFile(file) {
+      if (!isAudioFile(file)) {
+        showError('Keine Audio-Datei: ' + (file.name || file.type || 'unbekannt'));
+        return;
+      }
+      clearError();
+      resetUiToStopped();
+
+      if (padState.audio) {
+        try { padState.audio.pause(); } catch (_) {}
+        padState.audio.src = '';
+      }
+      padState.ready = false;
+      padState.duration = 0;
+      setTrimEnabled(false);
+      playBtn.disabled = true;
+      playBtn.classList.add('loading');
+      setPlayIcon('⏳');
+      fileNameSpan.textContent = file.name;
+      fileNameSpan.title = file.name;
+      padState.fileName = file.name;
+
+      let dataUrl;
+      try {
+        dataUrl = await loadFileAsSource(file);
+      } catch (err) {
+        showError('Datei konnte nicht gelesen werden: ' + (err.message || err));
+        playBtn.classList.remove('loading');
+        setPlayIcon('▶');
+        return;
+      }
+
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audio.volume = clamp01(padState.volume * masterVolume);
+      audio.loop = false;
+
+      audio.addEventListener('loadedmetadata', () => {
+        padState.duration = isFinite(audio.duration) ? audio.duration : 0;
+        padState.trimStart = 0;
+        padState.trimEnd = padState.duration;
+        setTrimEnabled(padState.duration > 0);
+        updateTrimUI();
+        schedulePadListSend();
+      });
+
+      audio.addEventListener('canplaythrough', () => {
+        padState.ready = true;
+        playBtn.disabled = false;
+        playBtn.classList.remove('loading');
+        setPlayIcon('▶');
+      }, { once: true });
+
+      audio.addEventListener('error', () => {
+        padState.ready = false;
+        playBtn.disabled = true;
+        playBtn.classList.remove('loading');
+        setPlayIcon('▶');
+        showError(describeMediaError(audio));
+      });
+
+      audio.addEventListener('ended', () => {
+        if (!padState.loop) resetUiToStopped();
+      });
+
+      audio.addEventListener('timeupdate', () => {
+        if (!audio.duration || !isFinite(audio.duration)) return;
+
+        const trimEnd = padState.trimEnd || audio.duration;
+        const fadeOutSec = padState.fadeOutMs / 1000;
+
+        if (padState.playing && trimEnd > 0) {
+          if (padState.loop) {
+            // Loop: am Trim-Ende zum Trim-Start zurückspringen
+            if (audio.currentTime >= trimEnd) {
+              try { audio.currentTime = padState.trimStart || 0; } catch (_) {}
+            }
+          } else {
+            // Auto-Fade-Out: rechtzeitig vor dem Trim-Ende starten,
+            // sodass der Fade exakt am Trim-Ende auf 0 ankommt
+            if (fadeOutSec > 0 && !padState.autoFadeStarted && padState.fading !== 'out' &&
+                audio.currentTime >= trimEnd - fadeOutSec) {
+              padState.autoFadeStarted = true;
+              const remainingMs = Math.max(0, (trimEnd - audio.currentTime) * 1000);
+              const fromVol = audio.volume;
+              padState.fading = 'out';
+              playBtn.classList.add('fading');
+              setPlayLabel('↘ ' + padState.name);
+              sendStateUpdate(id);
+              runFade(fromVol, 0, remainingMs, () => {
+                try { audio.pause(); } catch (_) {}
+                try { audio.currentTime = padState.trimStart || 0; } catch (_) {}
+                padState.autoFadeStarted = false;
+                resetUiToStopped();
+              });
+              return;
+            }
+            // Trim-Ende ohne Fade — hart stoppen
+            if (audio.currentTime >= trimEnd) {
+              cancelFade();
+              try { audio.pause(); } catch (_) {}
+              try { audio.currentTime = padState.trimStart || 0; } catch (_) {}
+              padState.autoFadeStarted = false;
+              resetUiToStopped();
+              return;
+            }
+          }
+        }
+
+        const span = (padState.trimEnd || audio.duration) - (padState.trimStart || 0);
+        if (span > 0) {
+          const rel = (audio.currentTime - (padState.trimStart || 0)) / span;
+          progress.style.width = clamp01(rel) * 100 + '%';
+        }
+        updatePlayhead();
+      });
+
+      audio.src = dataUrl;
+      audio.load();
+      padState.audio = audio;
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) loadFile(file);
+    });
+
+    pad.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      pad.classList.add('drag-over');
+    });
+    pad.addEventListener('dragleave', (e) => {
+      if (e.target === pad || !pad.contains(e.relatedTarget)) {
+        pad.classList.remove('drag-over');
+      }
+    });
+    pad.addEventListener('drop', (e) => {
+      e.preventDefault();
+      pad.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+
+    playBtn.addEventListener('click', () => padState.toggle());
+
+    volSlider.addEventListener('input', e => {
+      padState.volume = e.target.value / 100;
+      volVal.textContent = e.target.value + '%';
+      if (padState.audio && !padState.fading) {
+        padState.audio.volume = clamp01(padState.volume * masterVolume);
+      }
+    });
+
+    loopCheck.addEventListener('change', e => {
+      padState.loop = e.target.checked;
+      schedulePadListSend();
+    });
+
+    removeBtn.addEventListener('click', () => {
+      cancelFade();
+      if (padState.audio) {
+        try { padState.audio.pause(); } catch (_) {}
+        padState.audio.src = '';
+      }
+      pads.delete(id);
+      const ix = padOrder.indexOf(id);
+      if (ix !== -1) padOrder.splice(ix, 1);
+      pad.remove();
+      updatePadIndices();
+      refreshDropZone();
+      schedulePadListSend();
+    });
+
+    refreshDropZone();
+    schedulePadListSend();
+    return { padState, pad, loadFile };
+  }
+
+  function refreshDropZone() {
+    let zone = grid.querySelector('.drop-zone');
+    if (viewMode === 'performance') {
+      if (zone) zone.remove();
+      if (pads.size === 0 && !grid.querySelector('.empty')) {
+        const div = document.createElement('div');
+        div.className = 'empty';
+        div.textContent = 'Keine Pads. Wechsle zurück zum Edit-Mode, um welche hinzuzufügen.';
+        grid.appendChild(div);
+      }
+      return;
+    }
+    const empty = grid.querySelector('.empty');
+    if (empty) empty.remove();
+    if (!zone) {
+      zone = document.createElement('div');
+      zone.className = 'drop-zone';
+      zone.innerHTML = `
+        <div class="drop-zone-icon">＋</div>
+        <div><strong>Datei hier reinziehen</strong></div>
+        <div style="font-size:11px;">…oder Klick für neues leeres Pad</div>
+      `;
+      zone.addEventListener('click', () => createPad());
+      zone.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        zone.classList.add('drag-over');
+      });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer.files).filter(isAudioFile);
+        files.forEach(file => {
+          const { loadFile } = createPad();
+          loadFile(file);
+        });
+      });
+      grid.appendChild(zone);
+    } else {
+      grid.appendChild(zone);
+    }
+  }
+
+  document.getElementById('add-pad').addEventListener('click', () => createPad());
+  document.getElementById('stop-all').addEventListener('click', () => stopAllPads());
+
+  document.getElementById('clear-all').addEventListener('click', () => {
+    if (pads.size === 0) return;
+    if (!confirm('Alle Pads entfernen?')) return;
+    pads.forEach(p => {
+      if (p.fadeAnimId !== null) cancelAnimationFrame(p.fadeAnimId);
+      if (p.audio) {
+        try { p.audio.pause(); } catch (_) {}
+        p.audio.src = '';
+      }
+    });
+    pads.clear();
+    padOrder.length = 0;
+    grid.innerHTML = '';
+    refreshDropZone();
+    schedulePadListSend();
+  });
+
+  ['dragover', 'drop'].forEach(evt => {
+    window.addEventListener(evt, (e) => {
+      if (e.target === document.body || e.target === document.documentElement) {
+        e.preventDefault();
+      }
+    });
+  });
+
+  // Initial Pads
+  for (let i = 0; i < 4; i++) createPad();
+
+  // ============ Electron Integration ============
+  const isElectron = !!(window.electronAPI);
+
+  if (isElectron) {
+    // Browser-spezifische URL-Config ausblenden, Electron-Server-Section zeigen
+    document.getElementById('electron-server-section').style.display = 'flex';
+    document.getElementById('browser-config-section').style.display = 'none';
+    // In Electron immer localhost-Bridge nutzen, kein User-Override nötig
+    bridgeUrl = 'http://localhost:8765';
+
+    const serverDot = document.getElementById('server-dot');
+    const serverStatusText = document.getElementById('server-status-text');
+    const serverInfo = document.getElementById('server-info');
+    const startBtn = document.getElementById('bridge-server-start');
+    const stopBtn = document.getElementById('bridge-server-stop');
+
+    function applyServerStatus(status) {
+      const running = !!(status && status.running);
+      if (running) {
+        serverDot.style.background = 'var(--green)';
+        serverDot.style.boxShadow = '0 0 6px var(--green)';
+        serverStatusText.textContent = `Bridge-Server: läuft auf Port ${status.port || 8765}`;
+        const sb = status.soundboardConnected ? 'verbunden' : 'wartet auf Soundboard';
+        serverInfo.innerHTML = `Soundboard-Browser: <strong>${sb}</strong> · Pads: <strong>${status.padCount || 0}</strong><br>Companion-URL: <strong>http://localhost:${status.port || 8765}</strong>`;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      } else {
+        serverDot.style.background = status && status.error ? 'var(--red)' : 'var(--muted)';
+        serverDot.style.boxShadow = `0 0 6px ${status && status.error ? 'var(--red)' : 'var(--muted)'}`;
+        serverStatusText.textContent = status && status.error
+          ? `Bridge-Server: Fehler — ${status.error}`
+          : 'Bridge-Server: gestoppt';
+        serverInfo.textContent = '';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    }
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      const r = await window.electronAPI.startBridge();
+      if (!r.ok) {
+        applyServerStatus({ running: false, error: r.error });
+        return;
+      }
+      // Sobald Server läuft, automatisch verbinden
+      bridgeEnabled = true;
+      lsSet('soundboard.bridgeEnabled', '1');
+      connectBridge();
+    });
+
+    stopBtn.addEventListener('click', async () => {
+      stopBtn.disabled = true;
+      // Erst SSE trennen, sonst hängt der Stop am offenen Client
+      bridgeEnabled = false;
+      disconnectBridge();
+      await window.electronAPI.stopBridge();
+    });
+
+    // Status-Updates vom Hauptprozess empfangen
+    window.electronAPI.onBridgeStatus((status) => {
+      applyServerStatus(status);
+      // Wenn Server frisch gestartet ist und wir noch nicht verbunden sind,
+      // automatisch verbinden
+      if (status.running && bridgeStatus !== 'connected' && bridgeStatus !== 'connecting') {
+        bridgeEnabled = true;
+        connectBridge();
+      }
+      // Wenn Server gestoppt ist, SSE auch trennen
+      if (!status.running && bridgeStatus !== 'off') {
+        bridgeEnabled = false;
+        disconnectBridge();
+      }
+    });
+
+    // Initial-Status holen
+    window.electronAPI.getBridgeStatus().then((status) => {
+      applyServerStatus(status);
+      if (status.running) {
+        bridgeEnabled = true;
+        connectBridge();
+      }
+    });
+  } else {
+    // Browser-Modus: bisheriges Verhalten
+    setBridgeStatus(bridgeEnabled ? 'connecting' : 'off');
+    if (bridgeEnabled) connectBridge();
+  }
+</script>
+</body>
+</html>

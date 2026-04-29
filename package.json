@@ -1,0 +1,69 @@
+{
+	"name": "soundboard-app",
+	"version": "1.0.0",
+	"description": "Soundboard mit Companion-Bridge",
+	"author": "Peer",
+	"main": "electron-main.cjs",
+	"private": true,
+	"scripts": {
+		"start": "electron .",
+		"build": "electron-builder --win portable nsis",
+		"build:portable": "electron-builder --win portable",
+		"build:installer": "electron-builder --win nsis",
+		"build:mac": "electron-builder --mac"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"devDependencies": {
+		"electron": "^32.0.0",
+		"electron-builder": "^25.0.0"
+	},
+	"build": {
+		"appId": "com.peer.soundboard",
+		"productName": "Soundboard",
+		"copyright": "© 2026 Peer",
+		"files": [
+			"electron-main.cjs",
+			"preload.cjs",
+			"bridge-server.cjs",
+			"index.html",
+			"soundboard.ico",
+			"package.json"
+		],
+		"directories": {
+			"output": "dist",
+			"buildResources": "."
+		},
+		"win": {
+			"icon": "soundboard.ico",
+			"target": [
+				{ "target": "portable", "arch": ["x64"] },
+				{ "target": "nsis", "arch": ["x64"] }
+			],
+			"artifactName": "${productName}-${version}-${arch}-${target}.${ext}"
+		},
+		"nsis": {
+			"oneClick": false,
+			"perMachine": false,
+			"allowToChangeInstallationDirectory": true,
+			"createDesktopShortcut": true,
+			"createStartMenuShortcut": true,
+			"shortcutName": "Soundboard",
+			"installerIcon": "soundboard.ico",
+			"uninstallerIcon": "soundboard.ico",
+			"installerHeaderIcon": "soundboard.ico",
+			"deleteAppDataOnUninstall": false
+		},
+		"portable": {
+			"artifactName": "Soundboard-${version}-portable.${ext}"
+		},
+		"mac": {
+			"icon": "soundboard.ico",
+			"category": "public.app-category.music",
+			"target": [
+				{ "target": "dmg", "arch": ["x64", "arm64"] }
+			]
+		}
+	}
+}
