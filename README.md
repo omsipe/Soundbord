@@ -2,6 +2,11 @@
 
 Electron-Wrapper um das Soundboard mit eingebetteter Companion-Bridge. Ein Klick zum Starten — kein separates Terminal, kein `node bridge.js` mehr nötig.
 
+## Neu in Version 1.1.0
+
+- **Auto-Discovery via mDNS/Bonjour** — Die App announciert sich jetzt im lokalen Netzwerk. Das aktualisierte Companion-Modul findet alle Soundboard-Instanzen automatisch über ein Dropdown — kein manuelles Eintragen von IP-Adressen mehr.
+- **Companion-Modul auf 1.1.0** — Download direkt aus der App über den Button im Bridge-Modal. Der Link zeigt jetzt auf die [Releases-Seite des Companion-Repos](https://github.com/omsipe/companion-module-soundboard-bridge/releases/latest), damit er auch bei späteren Versionen ohne App-Update aktuell bleibt.
+
 ## Was sich gegenüber der alten Version ändert
 
 | | Vorher | Jetzt |

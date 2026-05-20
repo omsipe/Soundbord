@@ -1,15 +1,15 @@
 {
 	"name": "soundboard-app",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "Soundboard mit Companion-Bridge",
 	"author": "Peer",
 	"main": "electron-main.cjs",
 	"private": true,
 	"scripts": {
 		"start": "electron .",
-		"build": "electron-builder --win portable nsis",
+		"build": "electron-builder --win portable",
+		"build:zip": "electron-builder --win zip",
 		"build:portable": "electron-builder --win portable",
-		"build:installer": "electron-builder --win nsis",
 		"build:mac": "electron-builder --mac"
 	},
 	"engines": {
@@ -18,6 +18,9 @@
 	"devDependencies": {
 		"electron": "^32.0.0",
 		"electron-builder": "^25.0.0"
+	},
+	"dependencies": {
+		"bonjour-service": "^1.2.1"
 	},
 	"build": {
 		"appId": "com.peer.soundboard",
@@ -38,10 +41,9 @@
 		"win": {
 			"icon": "soundboard.ico",
 			"target": [
-				{ "target": "portable", "arch": ["x64"] },
-				{ "target": "nsis", "arch": ["x64"] }
+				{ "target": "zip", "arch": ["x64"] }
 			],
-			"artifactName": "${productName}-${version}-${arch}-${target}.${ext}"
+			"artifactName": "${productName}-${version}-portable.${ext}"
 		},
 		"nsis": {
 			"oneClick": false,

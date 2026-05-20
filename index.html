@@ -107,8 +107,41 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 20px;
-    width: min(500px, 90vw);
-    display: flex; flex-direction: column; gap: 14px;
+    width: min(900px, 95vw);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+  }
+  .bridge-modal-scroll {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-right: 4px;
+    margin-right: -4px;
+  }
+  .bridge-modal-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .bridge-modal-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .bridge-modal-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .bridge-modal-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+  }
+  .bridge-modal-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 720px) {
+    .bridge-modal-cols { grid-template-columns: 1fr; }
   }
   .bridge-modal h2 { margin: 0; font-size: 16px; }
   .bridge-modal label { font-size: 12px; color: var(--muted); }
@@ -137,6 +170,67 @@
   }
   .bridge-modal-info code {
     color: var(--accent);
+  }
+
+  .companion-module-section {
+    background: var(--panel-2);
+    padding: 14px 16px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    margin-top: 6px;
+  }
+  .companion-module-title {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .companion-module-intro {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+  }
+  .companion-module-steps {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .companion-module-steps li {
+    margin-bottom: 4px;
+  }
+  .companion-module-steps code {
+    background: var(--panel);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+  .companion-module-config {
+    margin: 4px 0 6px 0;
+    padding-left: 16px;
+    font-size: 11px;
+    color: var(--muted);
+    list-style: '· ';
+  }
+  .companion-download-row {
+    margin: 8px 0 4px 0;
+  }
+  .companion-download-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    font-size: 12px;
+    padding: 7px 14px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .companion-download-btn:hover {
+    background: #ff8a5c;
   }
 
   .grid {
@@ -294,6 +388,30 @@
   .checkbox { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
   .checkbox input { accent-color: var(--accent); cursor: pointer; }
 
+  .output-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .output-select {
+    flex: 1;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    outline: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .output-select:focus { border-color: var(--accent); }
+  .output-select option { background: var(--panel); color: var(--text); }
+
   .fade-row {
     display: flex; gap: 10px; align-items: center;
     font-size: 11px; color: var(--muted); flex-wrap: wrap;
@@ -345,6 +463,7 @@
   body.performance-mode .file-row,
   body.performance-mode .volume-row,
   body.performance-mode .options-row,
+  body.performance-mode .output-row,
   body.performance-mode .fade-row,
   body.performance-mode .trim-section,
   body.performance-mode .pad-error,
@@ -395,6 +514,8 @@
     <div class="controls">
       <button class="btn toggle" id="mode-toggle">🎛 Edit-Mode</button>
       <button class="btn" id="add-pad">+ Pad hinzufügen</button>
+      <button class="btn" id="session-save" title="Session speichern">💾 Speichern</button>
+      <button class="btn" id="session-load" title="Session laden">📂 Laden</button>
       <button class="btn" id="stop-all">Alles stoppen</button>
       <button class="btn danger" id="clear-all">Zurücksetzen</button>
     </div>
@@ -405,6 +526,8 @@
   <div class="bridge-modal-backdrop" id="bridge-modal-backdrop">
     <div class="bridge-modal">
       <h2>Companion-Bridge</h2>
+
+      <div class="bridge-modal-scroll">
 
       <!-- Electron-only: Bridge-Server Steuerung -->
       <div id="electron-server-section" style="display:none;flex-direction:column;gap:10px;padding:12px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;">
@@ -432,6 +555,8 @@
         </div>
       </div>
 
+      <div class="bridge-modal-cols">
+
       <div class="bridge-modal-info">
         Companion-Aktionen (Generic HTTP):<br>
         <code>GET {URL}/trigger/1</code> — Pad 1 starten<br>
@@ -441,6 +566,38 @@
         <code>GET {URL}/stop-all</code> — alle stoppen<br><br>
         Status &amp; Pad-Liste: <code>GET {URL}/api/pads</code>
       </div>
+
+      <!-- Companion-Modul Setup-Anleitung -->
+      <div class="companion-module-section">
+        <h3 class="companion-module-title">📦 Companion-Modul (Stream Deck)</h3>
+        <p class="companion-module-intro">
+          Für komfortable Stream-Deck-Bedienung mit Live-Status auf den Buttons gibt es ein passendes Companion-Modul.
+        </p>
+        <ol class="companion-module-steps">
+          <li><strong>Modul herunterladen</strong> (~450 KB):
+            <div class="companion-download-row">
+              <a href="#" id="companion-module-download" class="btn companion-download-btn">
+                ⬇ Auf GitHub Releases öffnen
+              </a>
+            </div>
+          </li>
+          <li>In Companion: <strong>Modules</strong> → <strong>Import module package</strong></li>
+          <li>Die heruntergeladene <code>.tgz</code>-Datei auswählen</li>
+          <li><strong>Connections</strong> → <strong>+ Add connection</strong>, nach <strong>"Soundboard"</strong> suchen und hinzufügen</li>
+          <li>Konfigurieren:
+            <ul class="companion-module-config">
+              <li>Bridge Host / IP: <code>localhost</code> (oder IP des Soundboard-PCs)</li>
+              <li>Bridge Port: <code>8765</code></li>
+            </ul>
+          </li>
+          <li>Im Companion-Presets-Tab erscheinen jetzt alle Pads als Drag&amp;Drop-Buttons</li>
+        </ol>
+      </div>
+
+      </div>
+
+      </div>
+
       <div class="bridge-modal-row">
         <button class="btn" id="bridge-save">Speichern</button>
         <button class="btn" id="bridge-close" style="margin-left:auto;">Schließen</button>
@@ -455,6 +612,13 @@
   let viewMode = 'edit';
   const pads = new Map();
   const padOrder = []; // Reihenfolge der Pad-IDs für stabile Index-Zuordnung
+
+  // Audio-Output-Devices
+  let audioOutputDevices = []; // [{deviceId, label}]
+  let devicesPermissionRequested = false;
+
+  // Session
+  let currentSessionPath = null;
 
   const grid = document.getElementById('grid');
   const masterVol = document.getElementById('master-vol');
@@ -727,6 +891,18 @@
     if (e.target === bridgeModal) bridgeModal.classList.remove('visible');
   });
 
+  // Download-Link für Companion-Modul — in Electron im System-Browser öffnen,
+  // sonst normaler Browser-Link
+  document.getElementById('companion-module-download').addEventListener('click', (e) => {
+    e.preventDefault();
+    const url = 'https://github.com/omsipe/companion-module-soundboard-bridge/releases/latest';
+    if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
+      window.electronAPI.openExternal(url);
+    } else {
+      window.open(url, '_blank');
+    }
+  });
+
   // ============ Master / Mode ============
   masterVol.addEventListener('input', (e) => {
     masterVolume = e.target.value / 100;
@@ -774,6 +950,102 @@
     return /\.(mp3|wav|ogg|m4a|flac|aac|opus|webm)$/.test(name);
   }
 
+  // ============ Audio Output Devices ============
+
+  async function ensureDevicesPermission() {
+    // Einmal getUserMedia anfordern, um Device-Labels freizuschalten.
+    // In Electron erlaubt der Hauptprozess das automatisch, im Browser muss
+    // der User einmal zustimmen.
+    if (devicesPermissionRequested) return;
+    devicesPermissionRequested = true;
+
+    // Prüfen ob die Permission schon erteilt ist (vermeidet unnötige Prompts)
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const status = await navigator.permissions.query({ name: 'microphone' });
+        if (status.state === 'granted') {
+          // Schon erteilt — kein getUserMedia nötig
+          return;
+        }
+        if (status.state === 'denied') {
+          // User hat blockiert — kein Punkt im Versuchen
+          console.warn('Microphone permission denied; device names will be generic');
+          return;
+        }
+      }
+    } catch (_) { /* permissions API nicht verfügbar — weiter mit getUserMedia */ }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stream sofort wieder schließen — wir wollten nur die Permission,
+      // nicht wirklich aufnehmen
+      stream.getTracks().forEach(t => t.stop());
+    } catch (err) {
+      console.warn('Audio permission denied, device names will be generic:', err.message);
+    }
+  }
+
+  async function refreshAudioOutputDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      audioOutputDevices = [];
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      audioOutputDevices = devices
+        .filter(d => d.kind === 'audiooutput')
+        .map((d, i) => ({
+          deviceId: d.deviceId,
+          label: d.label || `Audio-Ausgabe ${i + 1}`,
+        }));
+      // Alle Pad-Dropdowns neu befüllen
+      pads.forEach(p => populateOutputSelect(p));
+    } catch (err) {
+      console.warn('Could not enumerate audio devices:', err.message);
+    }
+  }
+
+  function populateOutputSelect(padState) {
+    if (!padState.padEl) return;
+    const sel = padState.padEl.querySelector('.output-select');
+    if (!sel) return;
+    const currentValue = padState.deviceId || 'default';
+    sel.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = 'default';
+    defaultOpt.textContent = 'Standard-Ausgabe';
+    sel.appendChild(defaultOpt);
+    for (const dev of audioOutputDevices) {
+      if (dev.deviceId === 'default') continue; // schon drin
+      const opt = document.createElement('option');
+      opt.value = dev.deviceId;
+      opt.textContent = dev.label;
+      sel.appendChild(opt);
+    }
+    // Falls die gespeicherte deviceId nicht mehr in der Liste ist:
+    // unter dem Namen behalten als greyed-out Eintrag
+    if (currentValue !== 'default' && !audioOutputDevices.some(d => d.deviceId === currentValue)) {
+      const opt = document.createElement('option');
+      opt.value = currentValue;
+      opt.textContent = (padState.deviceLabel || 'Gerät nicht verfügbar') + ' (offline)';
+      opt.disabled = false;
+      sel.appendChild(opt);
+    }
+    sel.value = currentValue;
+  }
+
+  async function applySinkId(audio, deviceId) {
+    if (!audio || typeof audio.setSinkId !== 'function') return false;
+    try {
+      await audio.setSinkId(deviceId || 'default');
+      return true;
+    } catch (err) {
+      console.warn('setSinkId failed:', err.message);
+      return false;
+    }
+  }
+
+
   function updatePadIndices() {
     padOrder.forEach((id, idx) => {
       const p = pads.get(id);
@@ -793,6 +1065,7 @@
       volume: 0.8,
       name: '',
       fileName: '',
+      filePath: null,
       loop: false,
       playing: false,
       fading: null,
@@ -804,6 +1077,8 @@
       trimEnd: 0,
       duration: 0,
       ready: false,
+      deviceId: 'default',
+      deviceLabel: '',
       padEl: null,
       trigger: null,
       stop: null,
@@ -864,6 +1139,12 @@
       <div class="options-row">
         <label class="checkbox"><input type="checkbox" class="loop-check"> Loop (innerhalb Trim)</label>
       </div>
+      <div class="output-row">
+        <span class="fade-label">Output</span>
+        <select class="output-select" title="Audio-Ausgabegerät für dieses Pad">
+          <option value="default">Standard-Ausgabe</option>
+        </select>
+      </div>
       <div class="pad-error"></div>
       <div class="progress"></div>
     `;
@@ -883,6 +1164,7 @@
     const loopCheck = pad.querySelector('.loop-check');
     const fadeInInput = pad.querySelector('.fade-in');
     const fadeOutInput = pad.querySelector('.fade-out');
+    const outputSelect = pad.querySelector('.output-select');
     const removeBtn = pad.querySelector('.pad-remove');
     const progress = pad.querySelector('.progress');
     const errorBox = pad.querySelector('.pad-error');
@@ -1152,6 +1434,20 @@
       fileNameSpan.textContent = file.name;
       fileNameSpan.title = file.name;
       padState.fileName = file.name;
+      // File-Pfad ermitteln für Session save/load.
+      // Electron 32+ hat file.path entfernt — wir nutzen webUtils.getPathForFile.
+      // Im Browser-Modus bleibt's null (Session-Datei dann ohne Pfad).
+      let resolvedPath = null;
+      if (file) {
+        if (window.electronAPI && typeof window.electronAPI.getFilePath === 'function') {
+          resolvedPath = window.electronAPI.getFilePath(file);
+        }
+        // Legacy-Fallback für ältere Electron-Versionen
+        if (!resolvedPath && typeof file.path === 'string' && file.path) {
+          resolvedPath = file.path;
+        }
+      }
+      padState.filePath = resolvedPath;
 
       let dataUrl;
       try {
@@ -1251,6 +1547,11 @@
       audio.src = dataUrl;
       audio.load();
       padState.audio = audio;
+
+      // Output-Device auf das neue Audio-Element anwenden
+      if (padState.deviceId && padState.deviceId !== 'default') {
+        await applySinkId(audio, padState.deviceId);
+      }
     }
 
     fileInput.addEventListener('change', (e) => {
@@ -1290,6 +1591,19 @@
       padState.loop = e.target.checked;
       schedulePadListSend();
     });
+
+    outputSelect.addEventListener('change', async e => {
+      padState.deviceId = e.target.value;
+      // Label mitspeichern, um es später bei Geräte-Reconnect identifizieren zu können
+      const dev = audioOutputDevices.find(d => d.deviceId === padState.deviceId);
+      padState.deviceLabel = dev ? dev.label : '';
+      if (padState.audio) {
+        await applySinkId(padState.audio, padState.deviceId);
+      }
+    });
+
+    // Output-Dropdown initial befüllen
+    populateOutputSelect(padState);
 
     removeBtn.addEventListener('click', () => {
       cancelFade();
@@ -1376,6 +1690,302 @@
     schedulePadListSend();
   });
 
+  // ============ Session Save / Load ============
+
+  function buildSessionData() {
+    const padsData = padOrder.map(id => {
+      const p = pads.get(id);
+      if (!p) return null;
+      return {
+        name: p.name,
+        filePath: p.filePath,
+        fileName: p.fileName,
+        volume: p.volume,
+        loop: p.loop,
+        fadeInMs: p.fadeInMs,
+        fadeOutMs: p.fadeOutMs,
+        trimStart: p.trimStart,
+        trimEnd: p.trimEnd,
+        duration: p.duration,
+        deviceId: p.deviceId,
+        deviceLabel: p.deviceLabel,
+      };
+    }).filter(Boolean);
+    return {
+      version: 1,
+      app: 'soundboard',
+      savedAt: new Date().toISOString(),
+      masterVolume,
+      pads: padsData,
+    };
+  }
+
+  async function loadPadFromSession(padData) {
+    // Pad anlegen, Werte setzen
+    const { padState, loadFile } = createPad();
+    padState.name = padData.name || padState.name;
+    padState.volume = (typeof padData.volume === 'number') ? padData.volume : padState.volume;
+    padState.loop = !!padData.loop;
+    padState.fadeInMs = padData.fadeInMs || 0;
+    padState.fadeOutMs = padData.fadeOutMs || 0;
+    padState.deviceId = padData.deviceId || 'default';
+    padState.deviceLabel = padData.deviceLabel || '';
+
+    // UI aktualisieren
+    const pad = padState.padEl;
+    pad.querySelector('.pad-name').value = padState.name;
+    pad.querySelector('.play-btn-name').textContent = padState.name;
+    pad.querySelector('.vol-slider').value = Math.round(padState.volume * 100);
+    pad.querySelector('.vol-val').textContent = Math.round(padState.volume * 100) + '%';
+    pad.querySelector('.loop-check').checked = padState.loop;
+    pad.querySelector('.fade-in').value = (padState.fadeInMs / 1000).toFixed(1);
+    pad.querySelector('.fade-out').value = (padState.fadeOutMs / 1000).toFixed(1);
+    populateOutputSelect(padState);
+
+    // Datei laden — entweder via Electron-Pfad oder Fehler anzeigen
+    if (padData.filePath && window.electronAPI) {
+      try {
+        const result = await window.electronAPI.readAudioFile(padData.filePath);
+        if (result.ok) {
+          // Wir simulieren ein File-Object für loadFile()
+          // Aber einfacher: direkt audio.src setzen, weil wir die dataUrl schon haben
+          await loadFileFromDataUrl(padState, result.dataUrl, result.fileName, padData.filePath);
+          // Trim-Werte nach Metadaten-Load wiederherstellen
+          if (typeof padData.trimStart === 'number') padState.trimStart = padData.trimStart;
+          if (typeof padData.trimEnd === 'number') padState.trimEnd = padData.trimEnd;
+        } else {
+          showPadError(padState, 'Datei konnte nicht geladen werden: ' + (result.error || padData.filePath));
+        }
+      } catch (err) {
+        showPadError(padState, 'Ladefehler: ' + err.message);
+      }
+    } else if (padData.fileName && window.electronAPI) {
+      // Electron läuft, aber kein Pfad in Session (alte Session-Datei von vor dem Fix)
+      showPadError(padState, 'Datei "' + padData.fileName + '" — Pfad in alter Session fehlt, bitte einmal manuell neu zuweisen');
+    } else if (padData.fileName) {
+      // Browser-Modus oder fehlende electronAPI
+      showPadError(padState, 'Datei "' + padData.fileName + '" — bitte manuell neu laden (im Browser-Modus nicht eingebettet)');
+    }
+  }
+
+  function showPadError(padState, msg) {
+    const errorBox = padState.padEl.querySelector('.pad-error');
+    if (errorBox) {
+      errorBox.textContent = msg;
+      errorBox.classList.add('visible');
+      padState.padEl.classList.add('error');
+    }
+  }
+
+  // Lädt eine Data-URL als Audio-Quelle (intern, für Session-Load).
+  // Re-Implementiert die loadFile-Logik ohne den File-Reader-Schritt.
+  async function loadFileFromDataUrl(padState, dataUrl, fileName, filePath) {
+    const pad = padState.padEl;
+    const playBtn = pad.querySelector('.play-btn');
+    const playBtnIcon = pad.querySelector('.play-btn-icon');
+    const fileNameSpan = pad.querySelector('.file-name');
+    const progress = pad.querySelector('.progress');
+
+    if (padState.audio) {
+      try { padState.audio.pause(); } catch (_) {}
+      padState.audio.src = '';
+    }
+    padState.ready = false;
+    padState.duration = 0;
+    pad.querySelector('.trim-slider').classList.add('disabled');
+    playBtn.disabled = true;
+    playBtn.classList.add('loading');
+    playBtnIcon.textContent = '⏳';
+    fileNameSpan.textContent = fileName;
+    fileNameSpan.title = fileName;
+    padState.fileName = fileName;
+    padState.filePath = filePath || null;
+
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.volume = clamp01(padState.volume * masterVolume);
+    audio.loop = false;
+
+    audio.addEventListener('loadedmetadata', () => {
+      padState.duration = isFinite(audio.duration) ? audio.duration : 0;
+      // Trim-Werte sind schon aus Session gesetzt — falls noch nicht, default
+      if (!padState.trimEnd) {
+        padState.trimStart = 0;
+        padState.trimEnd = padState.duration;
+      }
+      pad.querySelector('.trim-slider').classList.toggle('disabled', !(padState.duration > 0));
+      // Trim-UI manuell updaten
+      const dur = padState.duration || 1;
+      const startPct = clamp(padState.trimStart / dur * 100, 0, 100);
+      const endPct = clamp(padState.trimEnd / dur * 100, 0, 100);
+      pad.querySelector('.trim-start-handle').style.left = startPct + '%';
+      pad.querySelector('.trim-end-handle').style.left = endPct + '%';
+      const range = pad.querySelector('.trim-range');
+      range.style.left = startPct + '%';
+      range.style.width = (endPct - startPct) + '%';
+      const fmt = s => {
+        if (!isFinite(s)) return '--:--';
+        const m = Math.floor(s / 60), ss = Math.floor(s % 60);
+        return m + ':' + String(ss).padStart(2, '0');
+      };
+      pad.querySelector('.trim-time-start').textContent = fmt(padState.trimStart);
+      pad.querySelector('.trim-time-end').textContent = fmt(padState.trimEnd);
+      pad.querySelector('.trim-duration').textContent = '— ' + fmt(padState.trimEnd - padState.trimStart) + ' —';
+      schedulePadListSend();
+    });
+
+    audio.addEventListener('canplaythrough', () => {
+      padState.ready = true;
+      playBtn.disabled = false;
+      playBtn.classList.remove('loading');
+      playBtnIcon.textContent = '▶';
+    }, { once: true });
+
+    audio.addEventListener('error', () => {
+      padState.ready = false;
+      playBtn.disabled = true;
+      playBtn.classList.remove('loading');
+      playBtnIcon.textContent = '▶';
+      showPadError(padState, 'Audio-Fehler beim Laden');
+    });
+
+    audio.addEventListener('ended', () => {
+      if (!padState.loop) {
+        padState.playing = false;
+        pad.classList.remove('playing');
+        playBtn.classList.remove('playing');
+        playBtnIcon.textContent = '▶';
+        progress.style.width = '0%';
+      }
+    });
+
+    audio.addEventListener('timeupdate', () => {
+      if (!audio.duration || !isFinite(audio.duration)) return;
+      const trimEnd = padState.trimEnd || audio.duration;
+      const fadeOutSec = padState.fadeOutMs / 1000;
+      if (padState.playing && trimEnd > 0) {
+        if (padState.loop && audio.currentTime >= trimEnd) {
+          try { audio.currentTime = padState.trimStart || 0; } catch (_) {}
+        } else if (!padState.loop && audio.currentTime >= trimEnd) {
+          try { audio.pause(); } catch (_) {}
+          padState.playing = false;
+          pad.classList.remove('playing');
+          playBtn.classList.remove('playing');
+          playBtnIcon.textContent = '▶';
+          progress.style.width = '0%';
+          return;
+        }
+      }
+      const span = (padState.trimEnd || audio.duration) - (padState.trimStart || 0);
+      if (span > 0) {
+        const rel = (audio.currentTime - (padState.trimStart || 0)) / span;
+        progress.style.width = clamp01(rel) * 100 + '%';
+      }
+    });
+
+    audio.src = dataUrl;
+    audio.load();
+    padState.audio = audio;
+
+    if (padState.deviceId && padState.deviceId !== 'default') {
+      await applySinkId(audio, padState.deviceId);
+    }
+  }
+
+  async function saveSession() {
+    const data = buildSessionData();
+    if (window.electronAPI && window.electronAPI.saveSession) {
+      const r = await window.electronAPI.saveSession(data);
+      if (r.ok) {
+        currentSessionPath = r.path;
+        console.log('Session gespeichert:', r.path);
+      } else if (!r.canceled) {
+        alert('Speichern fehlgeschlagen: ' + (r.error || 'unbekannt'));
+      }
+    } else {
+      // Browser-Modus: Download-Blob anbieten
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'soundboard-session.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }
+
+  async function loadSession() {
+    if (pads.size > 0) {
+      if (!confirm('Aktuelle Pads werden ersetzt. Fortfahren?')) return;
+    }
+
+    let sessionData = null;
+    if (window.electronAPI && window.electronAPI.loadSession) {
+      const r = await window.electronAPI.loadSession();
+      if (r.canceled) return;
+      if (!r.ok) {
+        alert('Laden fehlgeschlagen: ' + (r.error || 'unbekannt'));
+        return;
+      }
+      sessionData = r.data;
+      currentSessionPath = r.path;
+    } else {
+      // Browser-Modus: File-Input
+      sessionData = await new Promise(resolve => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/json,.json';
+        input.onchange = async () => {
+          const file = input.files[0];
+          if (!file) return resolve(null);
+          try {
+            const text = await file.text();
+            resolve(JSON.parse(text));
+          } catch (err) {
+            alert('Datei ist kein gültiges Session-Format: ' + err.message);
+            resolve(null);
+          }
+        };
+        input.click();
+      });
+      if (!sessionData) return;
+    }
+
+    if (sessionData.app !== 'soundboard') {
+      alert('Datei ist keine gültige Soundboard-Session');
+      return;
+    }
+
+    // Alle aktuellen Pads sauber entfernen
+    pads.forEach(p => {
+      if (p.fadeAnimId !== null) cancelAnimationFrame(p.fadeAnimId);
+      if (p.audio) {
+        try { p.audio.pause(); } catch (_) {}
+        p.audio.src = '';
+      }
+    });
+    pads.clear();
+    padOrder.length = 0;
+    grid.innerHTML = '';
+
+    // Master-Volume
+    if (typeof sessionData.masterVolume === 'number') {
+      masterVolume = sessionData.masterVolume;
+      masterVol.value = Math.round(masterVolume * 100);
+      masterVal.textContent = Math.round(masterVolume * 100) + '%';
+    }
+
+    // Pads sequenziell laden (sonst kollidieren die Permission-Prompts)
+    for (const padData of (sessionData.pads || [])) {
+      await loadPadFromSession(padData);
+    }
+    refreshDropZone();
+    schedulePadListSend();
+  }
+
+  document.getElementById('session-save').addEventListener('click', saveSession);
+  document.getElementById('session-load').addEventListener('click', loadSession);
+
   ['dragover', 'drop'].forEach(evt => {
     window.addEventListener(evt, (e) => {
       if (e.target === document.body || e.target === document.documentElement) {
@@ -1386,6 +1996,20 @@
 
   // Initial Pads
   for (let i = 0; i < 4; i++) createPad();
+
+  // ============ Audio-Output-Devices Setup ============
+  // Beim Start einmal Permission anfordern, dann Device-Liste laden.
+  // In Electron geht das stillschweigend, im Browser zeigt's einen Permission-Dialog.
+  (async () => {
+    await ensureDevicesPermission();
+    await refreshAudioOutputDevices();
+    // Reagiere auf Geräte-Änderungen (USB-Soundkarte angesteckt etc.)
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        refreshAudioOutputDevices();
+      });
+    }
+  })();
 
   // ============ Electron Integration ============
   const isElectron = !!(window.electronAPI);
