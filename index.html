@@ -431,6 +431,54 @@
     -webkit-appearance: none; margin: 0;
   }
 
+  /* ---------- Playlist / Tracks ---------- */
+  /* max. ~6 Zeilen sichtbar, danach scrollen */
+  .track-list {
+    display: none; flex-direction: column; gap: 4px;
+    max-height: 168px; overflow-y: auto; padding-right: 2px;
+  }
+  .track-list::-webkit-scrollbar { width: 6px; }
+  .track-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .track-list::-webkit-scrollbar-track { background: transparent; }
+  .pad.playlist .track-list { display: flex; }
+  .track-item {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 4px 6px; font-size: 11px;
+  }
+  .track-item.active { border-color: var(--green); }
+  .track-item.dragging { opacity: 0.4; }
+  .track-item.drag-target { border-top: 2px solid var(--accent); }
+  .track-item .track-grip {
+    cursor: grab; color: var(--muted); font-size: 12px;
+    line-height: 1; user-select: none; flex: 0 0 auto;
+  }
+  .track-item .track-grip:active { cursor: grabbing; }
+  .track-item .track-num { color: var(--muted); font-family: ui-monospace, monospace; min-width: 16px; }
+  .track-item .track-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .track-item .track-dur { color: var(--muted); font-family: ui-monospace, monospace; }
+  .track-item .track-btn {
+    background: transparent; border: none; color: var(--muted);
+    cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1;
+  }
+  .track-item .track-btn:hover { color: var(--text); }
+  .track-item .track-btn:disabled { opacity: 0.25; cursor: default; }
+  .track-item .track-btn.track-del:hover { color: var(--red); }
+
+  .play-btn-time {
+    display: block; font-size: 11px; opacity: 0.85;
+    font-family: ui-monospace, monospace; margin-top: 3px;
+  }
+  .play-btn-time:empty { display: none; }
+  .pad.playlist .trim-section { display: none; }
+  .fade-input.crossfade-input { display: none; }
+  .pad.playlist .fade-input.fade-in-wrap,
+  .pad.playlist .fade-input.fade-out-wrap { display: none; }
+  .pad.playlist .fade-input.crossfade-input { display: flex; }
+  /* Track-Liste in der vereinfachten (Performance-)Ansicht ausblenden.
+     Höhere Spezifität als ".pad.playlist .track-list", sonst gewinnt die Playlist-Regel. */
+  body.performance-mode .pad.playlist .track-list { display: none; }
+
   .empty { text-align: center; padding: 60px 20px; color: var(--muted); grid-column: 1 / -1; }
   .progress {
     position: absolute; bottom: 0; left: 0; height: 2px;
@@ -765,15 +813,33 @@
     const list = padOrder.map((id, idx) => {
       const p = pads.get(id);
       if (!p) return null;
+      const isPlaylist = p.tracks && p.tracks.length >= 2;
+      let file = p.fileName || null;
+      let duration = p.duration || 0;
+      let trimStart = p.trimStart || 0;
+      let trimEnd = p.trimEnd || 0;
+      if (isPlaylist) {
+        const cf = (p.crossfadeMs || 0) / 1000;
+        let total = 0;
+        p.tracks.forEach(t => { total += (t.duration || 0); });
+        for (let i = 0; i < p.tracks.length - 1; i++) {
+          total -= Math.min(cf, p.tracks[i].duration || 0, p.tracks[i + 1].duration || 0);
+        }
+        duration = Math.max(0, total);
+        file = p.tracks.length + ' Tracks (Playlist)';
+        trimStart = 0;
+        trimEnd = duration;
+      }
       return {
         index: idx + 1,
         id: id,
         name: p.name,
-        file: p.fileName || null,
-        duration: p.duration || 0,
-        trim_start: p.trimStart || 0,
-        trim_end: p.trimEnd || 0,
-        loop: !!p.loop
+        file: file,
+        duration: duration,
+        trim_start: trimStart,
+        trim_end: trimEnd,
+        loop: !!p.loop,
+        playlist: isPlaylist ? p.tracks.length : 0
       };
     }).filter(Boolean);
     fetch(bridgeUrl.replace(/\/$/, '') + '/pads', {
@@ -842,6 +908,11 @@
         p.fadeAnimId = null;
       }
       p.fading = null;
+      // Playlist-Pads über ihren eigenen Stop-Pfad beenden
+      if (p.plActive && typeof p.forceStop === 'function') {
+        p.forceStop();
+        return;
+      }
       if (p.playing && p.audio) {
         try { p.audio.pause(); } catch (_) {}
         try { p.audio.currentTime = p.trimStart || 0; } catch (_) {}
@@ -857,6 +928,7 @@
           padEl.querySelector('.progress').style.width = '0%';
           padEl.querySelector('.trim-playhead').classList.remove('visible');
         }
+        if (p.refreshButtonTime) p.refreshButtonTime();
         sendStateUpdate(id);
       }
     });
@@ -908,7 +980,12 @@
     masterVolume = e.target.value / 100;
     masterVal.textContent = e.target.value + '%';
     pads.forEach(p => {
-      if (p.audio && !p.fading) {
+      if (p.plActive) {
+        const cur = p.tracks[p.plIndex];
+        if (cur && cur.audio && p.plRampAnims && !p.plRampAnims.get(cur.audio)) {
+          cur.audio.volume = clamp01(p.volume * masterVolume);
+        }
+      } else if (p.audio && !p.fading) {
         p.audio.volume = clamp01(p.volume * masterVolume);
       }
     });
@@ -1082,7 +1159,15 @@
       padEl: null,
       trigger: null,
       stop: null,
-      toggle: null
+      toggle: null,
+      forceStop: null,
+      // ----- Playlist -----
+      tracks: [],            // [{ fileName, filePath, dataUrl, duration, audio }]
+      crossfadeMs: 3000,
+      plIndex: 0,
+      plActive: false,
+      plStartTime: null,     // performance.now() bei Playlist-Start (für Restzeit-Countdown)
+      plRampAnims: new Map() // audioEl -> rAF id (für parallele Crossfade-Rampen)
     };
     pads.set(id, padState);
     padOrder.push(id);
@@ -1099,14 +1184,16 @@
       </div>
       <div class="file-row">
         <label class="file-label">
-          Datei wählen
-          <input type="file" class="file-input" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac">
+          Datei(en) wählen
+          <input type="file" class="file-input" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" multiple>
         </label>
         <span class="file-name">keine Datei (oder Datei reinziehen)</span>
       </div>
+      <div class="track-list"></div>
       <button class="play-btn" data-index="#${padOrder.length}" disabled>
         <span class="play-btn-icon">▶</span>
         <span class="play-btn-name">Pad ${id}</span>
+        <span class="play-btn-time"></span>
       </button>
       <div class="trim-section">
         <div class="trim-section-label">
@@ -1133,8 +1220,9 @@
       </div>
       <div class="fade-row">
         <span class="fade-label">Fade</span>
-        <label class="fade-input">In <input type="number" class="fade-in" min="0" max="60" step="0.1" value="0">s</label>
-        <label class="fade-input">Out <input type="number" class="fade-out" min="0" max="60" step="0.1" value="0">s</label>
+        <label class="fade-input fade-in-wrap">In <input type="number" class="fade-in" min="0" max="60" step="0.1" value="0">s</label>
+        <label class="fade-input fade-out-wrap">Out <input type="number" class="fade-out" min="0" max="60" step="0.1" value="0">s</label>
+        <label class="fade-input crossfade-input">Crossfade <input type="number" class="crossfade" min="0" max="30" step="0.1" value="3">s</label>
       </div>
       <div class="options-row">
         <label class="checkbox"><input type="checkbox" class="loop-check"> Loop (innerhalb Trim)</label>
@@ -1178,6 +1266,9 @@
     const trimTimeEnd = pad.querySelector('.trim-time-end');
     const trimDuration = pad.querySelector('.trim-duration');
     const resetTrimBtn = pad.querySelector('.reset-trim');
+    const trackListEl = pad.querySelector('.track-list');
+    const crossfadeInput = pad.querySelector('.crossfade');
+    const playBtnTime = pad.querySelector('.play-btn-time');
 
     padState.name = `Pad ${id}`;
     nameInput.value = padState.name;
@@ -1206,6 +1297,7 @@
       trimTimeStart.textContent = formatTime(padState.trimStart);
       trimTimeEnd.textContent = formatTime(padState.trimEnd);
       trimDuration.textContent = '— ' + formatTime(padState.trimEnd - padState.trimStart) + ' —';
+      refreshButtonTime();
     }
 
     function updatePlayhead() {
@@ -1314,6 +1406,7 @@
       setPlayLabel(padState.name);
       progress.style.width = '0%';
       trimPlayheadEl.classList.remove('visible');
+      refreshButtonTime();
       if (wasPlaying) sendStateUpdate(id);
     }
 
@@ -1375,8 +1468,400 @@
       });
     }
 
-    // Externe Kontroll-Methoden für Bridge
+    // ============ Playlist-Engine (Crossfade zwischen Tracks) ============
+    function plMode() { return padState.tracks.length >= 2; }
+    function plPlayable() { return plMode() && padState.tracks.every(t => t.dataUrl); }
+
+    // Volume-Rampe auf einem beliebigen Audio-Element (mehrere parallel möglich)
+    function plRamp(audioEl, from, to, ms, onDone) {
+      const prev = padState.plRampAnims.get(audioEl);
+      if (prev) cancelAnimationFrame(prev);
+      if (ms <= 0 || !audioEl) {
+        if (audioEl) audioEl.volume = clamp01(to);
+        padState.plRampAnims.delete(audioEl);
+        if (onDone) onDone();
+        return;
+      }
+      const start = performance.now();
+      function step(now) {
+        const prog = Math.min((now - start) / ms, 1);
+        audioEl.volume = clamp01(from + (to - from) * prog);
+        if (prog < 1) {
+          padState.plRampAnims.set(audioEl, requestAnimationFrame(step));
+        } else {
+          padState.plRampAnims.delete(audioEl);
+          if (onDone) onDone();
+        }
+      }
+      padState.plRampAnims.set(audioEl, requestAnimationFrame(step));
+    }
+    function plCancelRamps() {
+      padState.plRampAnims.forEach(animId => cancelAnimationFrame(animId));
+      padState.plRampAnims.clear();
+    }
+
+    // Gesamtlaufzeit = Summe der Track-Längen minus die Crossfade-Überlappungen
+    function plTotalRuntime() {
+      const cf = padState.crossfadeMs / 1000;
+      let total = 0;
+      padState.tracks.forEach(t => { total += (t.duration || 0); });
+      for (let i = 0; i < padState.tracks.length - 1; i++) {
+        const a = padState.tracks[i].duration || 0;
+        const b = padState.tracks[i + 1].duration || 0;
+        total -= Math.min(cf, a, b);
+      }
+      return Math.max(0, total);
+    }
+    // Button-Zeit: im Ruhezustand die Gesamtlänge, beim Abspielen die Restzeit (runterlaufend).
+    // Gilt für Single-Tracks UND Playlists.
+    function refreshButtonTime() {
+      if (plMode()) {
+        const total = plTotalRuntime();
+        let t = total;
+        if (padState.plActive && padState.plStartTime != null) {
+          t = Math.max(0, total - (performance.now() - padState.plStartTime) / 1000);
+        }
+        playBtnTime.textContent = '⏱ ' + formatTime(t) + ' · ' + padState.tracks.length + ' Tracks';
+      } else if (padState.audio && padState.duration) {
+        const start = padState.trimStart || 0;
+        const end = padState.trimEnd || padState.duration;
+        const full = Math.max(0, end - start);
+        const t = padState.playing ? Math.max(0, end - (padState.audio.currentTime || 0)) : full;
+        playBtnTime.textContent = '⏱ ' + formatTime(t);
+      } else {
+        playBtnTime.textContent = '';
+      }
+    }
+    padState.refreshButtonTime = refreshButtonTime;
+    function plUpdateRuntimeLabel() { refreshButtonTime(); }
+
+    function plProbeDuration(track) {
+      const probe = new Audio();
+      probe.preload = 'metadata';
+      probe.addEventListener('loadedmetadata', () => {
+        track.duration = isFinite(probe.duration) ? probe.duration : 0;
+        plUpdateRuntimeLabel();
+        plRenderTrackList();
+      }, { once: true });
+      probe.src = track.dataUrl;
+    }
+
+    let plDragSrc = null;   // Index des gerade gezogenen Tracks
+
+    function plRenderTrackList() {
+      trackListEl.innerHTML = '';
+      if (!plMode()) return;
+      padState.tracks.forEach((t, i) => {
+        const row = document.createElement('div');
+        row.className = 'track-item' + (padState.plActive && i === padState.plIndex ? ' active' : '');
+        row.draggable = true;
+        const grip = document.createElement('span');
+        grip.className = 'track-grip'; grip.textContent = '⠿'; grip.title = 'Ziehen zum Verschieben';
+        const num = document.createElement('span');
+        num.className = 'track-num'; num.textContent = (i + 1) + '.';
+        const name = document.createElement('span');
+        name.className = 'track-name'; name.textContent = t.fileName; name.title = t.fileName;
+        const dur = document.createElement('span');
+        dur.className = 'track-dur'; dur.textContent = t.duration ? formatTime(t.duration) : '…';
+        const del = document.createElement('button');
+        del.className = 'track-btn track-del'; del.textContent = '×'; del.title = 'Entfernen';
+        del.addEventListener('click', () => plRemoveTrack(i));
+
+        // ----- Drag & Drop zum Umsortieren (intern, keine Dateien) -----
+        row.addEventListener('dragstart', (e) => {
+          plDragSrc = i;
+          row.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', String(i)); } catch (_) {}
+        });
+        row.addEventListener('dragend', () => {
+          plDragSrc = null;
+          plRenderTrackList();
+        });
+        row.addEventListener('dragover', (e) => {
+          if (plDragSrc === null) return;       // nur auf interne Track-Drags reagieren
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          row.classList.add('drag-target');
+        });
+        row.addEventListener('dragleave', () => row.classList.remove('drag-target'));
+        row.addEventListener('drop', (e) => {
+          if (plDragSrc === null) return;
+          e.preventDefault();
+          e.stopPropagation();
+          row.classList.remove('drag-target');
+          plReorderTrack(plDragSrc, i);
+        });
+
+        row.append(grip, num, name, dur, del);
+        trackListEl.appendChild(row);
+      });
+    }
+
+    function plReorderTrack(from, to) {
+      if (from === null || from === to) return;
+      const arr = padState.tracks;
+      if (from < 0 || from >= arr.length) return;
+      if (padState.plActive) plStopAll();
+      const item = arr.splice(from, 1)[0];
+      let insertAt = (from < to) ? to - 1 : to;
+      insertAt = Math.max(0, Math.min(insertAt, arr.length));
+      arr.splice(insertAt, 0, item);
+      plRenderTrackList();
+    }
+
+    function plUpdateProgress(idx, curTime) {
+      let elapsed = 0;
+      for (let i = 0; i < idx; i++) elapsed += (padState.tracks[i].duration || 0);
+      elapsed += curTime;
+      let totalSum = 0;
+      padState.tracks.forEach(t => { totalSum += (t.duration || 0); });
+      if (totalSum > 0) progress.style.width = clamp01(elapsed / totalSum) * 100 + '%';
+    }
+
+    function plMakeDeck(track) {
+      const a = new Audio();
+      a.preload = 'auto';
+      a.loop = false;
+      a.volume = 0;
+      a.addEventListener('timeupdate', () => plOnDeckTick(track));
+      a.addEventListener('ended', () => plOnDeckEnded(track));
+      a.src = track.dataUrl;
+      a.load();
+      if (padState.deviceId && padState.deviceId !== 'default') applySinkId(a, padState.deviceId);
+      track.audio = a;
+      return a;
+    }
+
+    function plOnDeckTick(track) {
+      if (!padState.plActive) return;
+      const idx = padState.tracks.indexOf(track);
+      if (idx === -1 || idx !== padState.plIndex) return;   // nur der aktuelle Track steuert Übergänge
+      const a = track.audio;
+      if (!a) return;
+      const dur = (a.duration && isFinite(a.duration)) ? a.duration : (track.duration || 0);
+      if (!dur) return;
+      plUpdateProgress(idx, a.currentTime);
+      refreshButtonTime();
+      const cf = padState.crossfadeMs / 1000;
+      const next = padState.tracks[idx + 1];
+      if (next && cf > 0 && !track._transitioning && (dur - a.currentTime) <= cf) {
+        track._transitioning = true;
+        plStartTransition(idx);
+      }
+    }
+
+    function plStartTransition(fromIdx) {
+      const cur = padState.tracks[fromIdx];
+      const nxt = padState.tracks[fromIdx + 1];
+      if (!cur || !nxt) return;
+      const a = cur.audio;
+      const b = nxt.audio || plMakeDeck(nxt);
+      const target = clamp01(padState.volume * masterVolume);
+      const cf = padState.crossfadeMs / 1000;
+      const remaining = Math.max(0.05, ((a.duration && isFinite(a.duration)) ? a.duration : cur.duration) - a.currentTime);
+      const rampMs = Math.min(cf, remaining) * 1000;
+      try { b.currentTime = 0; } catch (_) {}
+      b.volume = 0;
+      b.play().catch(() => {});
+      padState.plIndex = fromIdx + 1;
+      plRenderTrackList();
+      sendStateUpdate(id);
+      plRamp(b, 0, target, rampMs);
+      plRamp(a, a.volume, 0, rampMs, () => {
+        try { a.pause(); } catch (_) {}
+        try { a.currentTime = 0; } catch (_) {}
+        cur._transitioning = false;
+      });
+    }
+
+    function plOnDeckEnded(track) {
+      if (!padState.plActive) return;
+      const idx = padState.tracks.indexOf(track);
+      if (idx === -1 || idx !== padState.plIndex) return;   // ausklingender Alt-Deck → ignorieren
+      const next = padState.tracks[idx + 1];
+      if (next) {
+        // Harter Schnitt (Crossfade = 0): direkt zum nächsten Track
+        const a = next.audio || plMakeDeck(next);
+        padState.plIndex = idx + 1;
+        const target = clamp01(padState.volume * masterVolume);
+        try { a.currentTime = 0; } catch (_) {}
+        a.volume = target;
+        a.play().catch(() => {});
+        plRenderTrackList();
+      } else if (padState.loop) {
+        plStart();
+      } else {
+        plStopAll();
+      }
+    }
+
+    function plStart() {
+      if (!plPlayable()) return;
+      plCancelRamps();
+      padState.tracks.forEach(t => {
+        if (!t.audio) plMakeDeck(t);
+        try { t.audio.pause(); } catch (_) {}
+        try { t.audio.currentTime = 0; } catch (_) {}
+        t.audio.volume = 0;
+        t._transitioning = false;
+      });
+      padState.plIndex = 0;
+      const first = padState.tracks[0];
+      const target = clamp01(padState.volume * masterVolume);
+      first.audio.volume = target;
+      padState.plActive = true;
+      padState.playing = true;
+      padState.plStartTime = performance.now();
+      clearError();
+      first.audio.play().then(() => {
+        pad.classList.add('playing');
+        playBtn.classList.add('playing');
+        setPlayIcon('■');
+        plRenderTrackList();
+        refreshButtonTime();
+        sendStateUpdate(id);
+      }).catch(err => {
+        showError('Wiedergabe-Fehler: ' + (err && err.message ? err.message : String(err)));
+        plStopAll();
+      });
+    }
+
+    function plStopAll() {
+      plCancelRamps();
+      padState.tracks.forEach(t => {
+        if (t.audio) {
+          try { t.audio.pause(); } catch (_) {}
+          try { t.audio.currentTime = 0; } catch (_) {}
+          t.audio.volume = 0;
+          t._transitioning = false;
+        }
+      });
+      padState.plActive = false;
+      padState.plIndex = 0;
+      resetUiToStopped();
+      plRenderTrackList();
+    }
+
+
+    function plRemoveTrack(i) {
+      if (padState.plActive) plStopAll();
+      const removed = padState.tracks.splice(i, 1)[0];
+      if (removed && removed.audio) {
+        try { removed.audio.pause(); } catch (_) {}
+        removed.audio.src = '';
+        removed.audio = null;
+      }
+      if (padState.tracks.length >= 2) {
+        plUpdateRuntimeLabel();
+        plRenderTrackList();
+        fileNameSpan.textContent = padState.tracks.length + ' Tracks (Playlist)';
+      } else if (padState.tracks.length === 1) {
+        // zurück in den Single-Modus
+        pad.classList.remove('playlist');
+        trackListEl.innerHTML = '';
+        playBtnTime.textContent = '';
+        const t = padState.tracks[0];
+        if (t.audio) { try { t.audio.pause(); } catch (_) {} t.audio.src = ''; t.audio = null; }
+        padState.trimStart = 0; padState.trimEnd = 0;
+        loadFileFromDataUrl(padState, t.dataUrl, t.fileName, t.filePath);
+      } else {
+        // leeres Pad
+        pad.classList.remove('playlist');
+        trackListEl.innerHTML = '';
+        playBtnTime.textContent = '';
+        fileNameSpan.textContent = 'keine Datei (oder Datei reinziehen)';
+        padState.ready = false;
+        padState.audio = null;
+        playBtn.disabled = true;
+        setPlayIcon('▶');
+      }
+      schedulePadListSend();
+    }
+
+    // Wechselt das Pad in den Playlist-Modus (≥2 Tracks)
+    function enterPlaylist() {
+      if (padState.tracks.length < 2) return;
+      cancelFade();
+      if (padState.audio) {
+        try { padState.audio.pause(); } catch (_) {}
+        padState.audio.src = '';
+        padState.audio = null;
+      }
+      resetUiToStopped();
+      padState.playing = false;
+      pad.classList.add('playlist');
+      setTrimEnabled(false);
+      crossfadeInput.value = (padState.crossfadeMs / 1000).toFixed(1);
+      fileNameSpan.textContent = padState.tracks.length + ' Tracks (Playlist)';
+      fileNameSpan.title = padState.tracks.map(t => t.fileName).join(' · ');
+      padState.ready = true;
+      playBtn.disabled = false;
+      playBtn.classList.remove('loading');
+      setPlayIcon('▶');
+      setPlayLabel(padState.name);
+      plUpdateRuntimeLabel();
+      plRenderTrackList();
+      schedulePadListSend();
+    }
+
+    // Liest Dateien ein und hängt sie als Tracks an; ab 2 Tracks → Playlist
+    async function addTracksFromFiles(fileArr) {
+      clearError();
+      for (const f of fileArr) {
+        let dataUrl;
+        try { dataUrl = await loadFileAsSource(f); } catch (_) { continue; }
+        let filePath = null;
+        if (window.electronAPI && typeof window.electronAPI.getFilePath === 'function') {
+          filePath = window.electronAPI.getFilePath(f);
+        }
+        if (!filePath && typeof f.path === 'string' && f.path) filePath = f.path;
+        const track = { fileName: f.name, filePath, dataUrl, duration: 0, audio: null };
+        padState.tracks.push(track);
+        plProbeDuration(track);
+      }
+      if (padState.tracks.length >= 2) {
+        enterPlaylist();
+      } else if (padState.tracks.length === 1) {
+        // Nur 1 Track übrig (z. B. Drop einer einzelnen Datei) → Single-Modus
+        const t = padState.tracks[0];
+        padState.trimStart = 0; padState.trimEnd = 0;
+        loadFileFromDataUrl(padState, t.dataUrl, t.fileName, t.filePath);
+      }
+    }
+
+    // Einstiegspunkt für neue Dateien.
+    // append=true (Drop auf Pad) → immer anhängen / Playlist bauen.
+    // append=false (Datei-Picker) → einzelne Datei lädt/ersetzt, mehrere → Playlist.
+    function handleNewFiles(fileArr, append) {
+      const audioFiles = fileArr.filter(isAudioFile);
+      if (!audioFiles.length) {
+        showError('Keine Audio-Datei dabei');
+        return;
+      }
+      const existing = padState.tracks.filter(t => t && t.dataUrl).length;
+      // Leeres Pad + genau 1 Datei → voll ausgestatteter Single-Load (mit Auto-Fade)
+      if (existing === 0 && audioFiles.length === 1) {
+        loadFile(audioFiles[0]);
+        return;
+      }
+      // Single-Pad per Picker mit 1 Datei neu wählen → ersetzen (kein Playlist-Zwang)
+      if (!append && !plMode() && existing === 1 && audioFiles.length === 1) {
+        loadFile(audioFiles[0]);
+        return;
+      }
+      addTracksFromFiles(audioFiles);
+    }
+
+    // Externe Kontroll-Methoden für Bridge (Single- ODER Playlist-Modus)
     padState.trigger = () => {
+      if (plMode()) {
+        if (!plPlayable()) return;
+        if (padState.plActive) plStopAll();
+        plStart();
+        return;
+      }
       if (!padState.audio || !padState.ready) return;
       // Trigger = immer von vorne starten, auch wenn schon spielt
       if (padState.playing || padState.fading) {
@@ -1387,16 +1872,63 @@
       startPlayback();
     };
     padState.stop = () => {
+      if (plMode()) {
+        if (padState.plActive) plStopAll();
+        return;
+      }
       if (!padState.audio || !padState.ready) return;
       if (padState.fading === 'out') startStop({ immediate: true });
       else if (padState.playing || padState.fading === 'in') startStop();
     };
     padState.toggle = () => {
+      if (plMode()) {
+        if (!plPlayable()) return;
+        if (padState.plActive || padState.playing) plStopAll();
+        else plStart();
+        return;
+      }
       if (!padState.audio || !padState.ready) return;
       if (padState.fading === 'out') { startStop({ immediate: true }); return; }
       if (padState.fading === 'in' || padState.playing) { startStop(); return; }
       startPlayback();
     };
+    padState.forceStop = () => {
+      if (plMode()) plStopAll();
+    };
+
+    // Restore einer Playlist aus Session-Daten (Tracks mit filePath)
+    padState.restorePlaylist = async (tracksMeta, savedCrossfadeMs) => {
+      if (typeof savedCrossfadeMs === 'number') padState.crossfadeMs = savedCrossfadeMs;
+      padState.tracks = [];
+      for (const tm of tracksMeta) {
+        let dataUrl = null;
+        if (tm.filePath && window.electronAPI && typeof window.electronAPI.readAudioFile === 'function') {
+          try {
+            const res = await window.electronAPI.readAudioFile(tm.filePath);
+            if (res && res.ok) dataUrl = res.dataUrl;
+          } catch (_) {}
+        }
+        const fallbackName = tm.fileName || (tm.filePath ? tm.filePath.split(/[\\/]/).pop() : 'Track');
+        const track = { fileName: fallbackName, filePath: tm.filePath || null, dataUrl, duration: tm.duration || 0, audio: null };
+        padState.tracks.push(track);
+        if (dataUrl && !track.duration) plProbeDuration(track);
+      }
+      if (padState.tracks.length >= 2) {
+        enterPlaylist();
+        crossfadeInput.value = (padState.crossfadeMs / 1000).toFixed(1);
+        if (!padState.tracks.every(t => t.dataUrl)) {
+          showError('Einige Playlist-Dateien konnten nicht geladen werden — Pfad prüfen');
+          padState.ready = false;
+          playBtn.disabled = true;
+        }
+      }
+    };
+
+    crossfadeInput.addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      padState.crossfadeMs = isFinite(v) && v >= 0 ? v * 1000 : 0;
+      plUpdateRuntimeLabel();
+    });
 
     nameInput.addEventListener('input', e => {
       padState.name = e.target.value || `Pad ${id}`;
@@ -1459,6 +1991,11 @@
         return;
       }
 
+      // Single-Track: tracks[0] mitführen, damit "weitere Datei hinzufügen" → Playlist funktioniert
+      padState.tracks = [{ fileName: file.name, filePath: resolvedPath, dataUrl, duration: 0, audio: null }];
+      pad.classList.remove('playlist');
+      playBtnTime.textContent = '';
+
       const audio = new Audio();
       audio.preload = 'auto';
       audio.volume = clamp01(padState.volume * masterVolume);
@@ -1466,6 +2003,7 @@
 
       audio.addEventListener('loadedmetadata', () => {
         padState.duration = isFinite(audio.duration) ? audio.duration : 0;
+        if (padState.tracks[0]) padState.tracks[0].duration = padState.duration;
         padState.trimStart = 0;
         padState.trimEnd = padState.duration;
         setTrimEnabled(padState.duration > 0);
@@ -1542,6 +2080,7 @@
           progress.style.width = clamp01(rel) * 100 + '%';
         }
         updatePlayhead();
+        refreshButtonTime();
       });
 
       audio.src = dataUrl;
@@ -1555,8 +2094,9 @@
     }
 
     fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) loadFile(file);
+      const files = Array.from(e.target.files || []);
+      if (files.length) handleNewFiles(files);
+      e.target.value = '';   // erlaubt erneutes Wählen derselben Datei(en)
     });
 
     pad.addEventListener('dragover', (e) => {
@@ -1573,8 +2113,8 @@
     pad.addEventListener('drop', (e) => {
       e.preventDefault();
       pad.classList.remove('drag-over');
-      const file = e.dataTransfer.files[0];
-      if (file) loadFile(file);
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length) handleNewFiles(files, true);   // Drop = anhängen / Playlist bauen
     });
 
     playBtn.addEventListener('click', () => padState.toggle());
@@ -1582,7 +2122,15 @@
     volSlider.addEventListener('input', e => {
       padState.volume = e.target.value / 100;
       volVal.textContent = e.target.value + '%';
-      if (padState.audio && !padState.fading) {
+      if (plMode()) {
+        if (padState.plActive) {
+          const cur = padState.tracks[padState.plIndex];
+          // nur setzen, wenn auf diesem Deck gerade keine Crossfade-Rampe läuft
+          if (cur && cur.audio && !padState.plRampAnims.get(cur.audio)) {
+            cur.audio.volume = clamp01(padState.volume * masterVolume);
+          }
+        }
+      } else if (padState.audio && !padState.fading) {
         padState.audio.volume = clamp01(padState.volume * masterVolume);
       }
     });
@@ -1597,7 +2145,11 @@
       // Label mitspeichern, um es später bei Geräte-Reconnect identifizieren zu können
       const dev = audioOutputDevices.find(d => d.deviceId === padState.deviceId);
       padState.deviceLabel = dev ? dev.label : '';
-      if (padState.audio) {
+      if (plMode()) {
+        for (const t of padState.tracks) {
+          if (t.audio) await applySinkId(t.audio, padState.deviceId);
+        }
+      } else if (padState.audio) {
         await applySinkId(padState.audio, padState.deviceId);
       }
     });
@@ -1607,10 +2159,14 @@
 
     removeBtn.addEventListener('click', () => {
       cancelFade();
+      plCancelRamps();
       if (padState.audio) {
         try { padState.audio.pause(); } catch (_) {}
         padState.audio.src = '';
       }
+      padState.tracks.forEach(t => {
+        if (t.audio) { try { t.audio.pause(); } catch (_) {} t.audio.src = ''; t.audio = null; }
+      });
       pads.delete(id);
       const ix = padOrder.indexOf(id);
       if (ix !== -1) padOrder.splice(ix, 1);
@@ -1678,10 +2234,12 @@
     if (!confirm('Alle Pads entfernen?')) return;
     pads.forEach(p => {
       if (p.fadeAnimId !== null) cancelAnimationFrame(p.fadeAnimId);
+      if (p.plRampAnims) { p.plRampAnims.forEach(animId => cancelAnimationFrame(animId)); p.plRampAnims.clear(); }
       if (p.audio) {
         try { p.audio.pause(); } catch (_) {}
         p.audio.src = '';
       }
+      if (p.tracks) p.tracks.forEach(t => { if (t.audio) { try { t.audio.pause(); } catch (_) {} t.audio.src = ''; t.audio = null; } });
     });
     pads.clear();
     padOrder.length = 0;
@@ -1709,10 +2267,15 @@
         duration: p.duration,
         deviceId: p.deviceId,
         deviceLabel: p.deviceLabel,
+        crossfadeMs: p.crossfadeMs,
+        // Nur bei echten Playlists (>=2 Tracks) speichern
+        tracks: (p.tracks && p.tracks.length >= 2)
+          ? p.tracks.map(t => ({ fileName: t.fileName, filePath: t.filePath, duration: t.duration }))
+          : undefined,
       };
     }).filter(Boolean);
     return {
-      version: 1,
+      version: 2,
       app: 'soundboard',
       savedAt: new Date().toISOString(),
       masterVolume,
@@ -1730,6 +2293,7 @@
     padState.fadeOutMs = padData.fadeOutMs || 0;
     padState.deviceId = padData.deviceId || 'default';
     padState.deviceLabel = padData.deviceLabel || '';
+    padState.crossfadeMs = (typeof padData.crossfadeMs === 'number') ? padData.crossfadeMs : padState.crossfadeMs;
 
     // UI aktualisieren
     const pad = padState.padEl;
@@ -1741,6 +2305,12 @@
     pad.querySelector('.fade-in').value = (padState.fadeInMs / 1000).toFixed(1);
     pad.querySelector('.fade-out').value = (padState.fadeOutMs / 1000).toFixed(1);
     populateOutputSelect(padState);
+
+    // Playlist (>=2 Tracks) wiederherstellen
+    if (padData.tracks && padData.tracks.length >= 2 && typeof padState.restorePlaylist === 'function') {
+      await padState.restorePlaylist(padData.tracks, padData.crossfadeMs);
+      return;
+    }
 
     // Datei laden — entweder via Electron-Pfad oder Fehler anzeigen
     if (padData.filePath && window.electronAPI) {
@@ -1800,6 +2370,10 @@
     fileNameSpan.title = fileName;
     padState.fileName = fileName;
     padState.filePath = filePath || null;
+    // Single-Track: tracks[0] mitführen (für späteres Hinzufügen weiterer Tracks → Playlist)
+    padState.tracks = [{ fileName, filePath: filePath || null, dataUrl, duration: 0, audio: null }];
+    pad.classList.remove('playlist');
+    pad.querySelector('.play-btn-time').textContent = '';
 
     const audio = new Audio();
     audio.preload = 'auto';
@@ -1808,6 +2382,7 @@
 
     audio.addEventListener('loadedmetadata', () => {
       padState.duration = isFinite(audio.duration) ? audio.duration : 0;
+      if (padState.tracks[0]) padState.tracks[0].duration = padState.duration;
       // Trim-Werte sind schon aus Session gesetzt — falls noch nicht, default
       if (!padState.trimEnd) {
         padState.trimStart = 0;
@@ -1831,6 +2406,7 @@
       pad.querySelector('.trim-time-start').textContent = fmt(padState.trimStart);
       pad.querySelector('.trim-time-end').textContent = fmt(padState.trimEnd);
       pad.querySelector('.trim-duration').textContent = '— ' + fmt(padState.trimEnd - padState.trimStart) + ' —';
+      if (padState.refreshButtonTime) padState.refreshButtonTime();
       schedulePadListSend();
     });
 
@@ -1881,6 +2457,7 @@
         const rel = (audio.currentTime - (padState.trimStart || 0)) / span;
         progress.style.width = clamp01(rel) * 100 + '%';
       }
+      if (padState.refreshButtonTime) padState.refreshButtonTime();
     });
 
     audio.src = dataUrl;
@@ -1959,10 +2536,12 @@
     // Alle aktuellen Pads sauber entfernen
     pads.forEach(p => {
       if (p.fadeAnimId !== null) cancelAnimationFrame(p.fadeAnimId);
+      if (p.plRampAnims) { p.plRampAnims.forEach(animId => cancelAnimationFrame(animId)); p.plRampAnims.clear(); }
       if (p.audio) {
         try { p.audio.pause(); } catch (_) {}
         p.audio.src = '';
       }
+      if (p.tracks) p.tracks.forEach(t => { if (t.audio) { try { t.audio.pause(); } catch (_) {} t.audio.src = ''; t.audio = null; } });
     });
     pads.clear();
     padOrder.length = 0;

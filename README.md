@@ -2,6 +2,13 @@
 
 Electron-Wrapper um das Soundboard mit eingebetteter Companion-Bridge. Ein Klick zum Starten — kein separates Terminal, kein `node bridge.js` mehr nötig.
 
+## Neu in Version 1.2.0
+
+- **Playlists auf einem Pad** — Mehrere Tracks auf ein Pad legen (mehrere Dateien auf einmal wählen oder zusätzliche Dateien auf ein Pad ziehen). Die Tracks laufen nacheinander.
+- **Crossfade zwischen Tracks** — Im Playlist-Modus ersetzt ein Crossfade-Regler das Fade-In/Out; an den Übergängen wird übergeblendet.
+- **Gesamtlaufzeit & Countdown** — Der Pad-Button zeigt die Zeit an: im Ruhezustand die Gesamtlänge (bei Playlists inkl. Track-Zahl), beim Abspielen die runterlaufende Restzeit — für Einzel-Tracks wie für Playlists.
+- **Track-Verwaltung** — Track-Liste mit Drag-and-Drop-Sortierung und Einzel-Entfernen; max. 6 Tracks sichtbar, der Rest scrollt. In der Performance-Ansicht ausgeblendet.
+
 ## Neu in Version 1.1.0
 
 - **Auto-Discovery via mDNS/Bonjour** — Die App announciert sich jetzt im lokalen Netzwerk. Das aktualisierte Companion-Modul findet alle Soundboard-Instanzen automatisch über ein Dropdown — kein manuelles Eintragen von IP-Adressen mehr.
