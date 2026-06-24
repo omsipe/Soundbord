@@ -2,6 +2,13 @@
 
 Electron-Wrapper um das Soundboard mit eingebetteter Companion-Bridge. Ein Klick zum Starten — kein separates Terminal, kein `node bridge.js` mehr nötig.
 
+## Neu in Version 1.2.1
+
+- **Logarithmische Fades** — Fade-In/Out folgen jetzt einer Audio-Taper-Kurve (perzeptuell gleichmäßig) statt linearer Amplitude; Crossfades nutzen eine Equal-Power-Kurve (kein Lautstärke-Einbruch in der Mitte).
+- **Fade-In/Out für Playlists** — Zusätzlich zum Crossfade blenden Playlists am Anfang ein und am Ende aus.
+- **Stop-Fade für Playlists** — Eine laufende Playlist blendet beim manuellen Stoppen über die Out-Zeit aus, statt hart abzuschneiden.
+- **Kleinigkeit** — Loop-Label vereinfacht.
+
 ## Neu in Version 1.2.0
 
 - **Playlists auf einem Pad** — Mehrere Tracks auf ein Pad legen (mehrere Dateien auf einmal wählen oder zusätzliche Dateien auf ein Pad ziehen). Die Tracks laufen nacheinander.

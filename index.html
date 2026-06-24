@@ -472,8 +472,8 @@
   .play-btn-time:empty { display: none; }
   .pad.playlist .trim-section { display: none; }
   .fade-input.crossfade-input { display: none; }
-  .pad.playlist .fade-input.fade-in-wrap,
-  .pad.playlist .fade-input.fade-out-wrap { display: none; }
+  /* Im Playlist-Modus zusätzlich zum Crossfade auch Fade-In/Out anzeigen
+     (Fade-In am Playlist-Anfang, Fade-Out am Playlist-Ende). */
   .pad.playlist .fade-input.crossfade-input { display: flex; }
   /* Track-Liste in der vereinfachten (Performance-)Ansicht ausblenden.
      Höhere Spezifität als ".pad.playlist .track-list", sonst gewinnt die Playlist-Regel. */
@@ -676,6 +676,31 @@
   // ============ Helpers ============
   function clamp01(v) { return Math.max(0, Math.min(1, v)); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(v, hi)); }
+
+  // Logarithmische Fade-Kurve ("Audio-Taper"): erreicht an den Enden exakt
+  // `from`/`to` (kein Floor-Hack, kein Knacken, keine stille Totzeit).
+  // Fade-In steigt langsam aus der Stille, Fade-Out wird früh leiser — beides
+  // über die volle Dauer hörbar. A steuert die Krümmung (größer = stärker log).
+  function fadeCurve(from, to, t) {
+    if (t <= 0) return from;
+    if (t >= 1) return to;
+    const A = 60;
+    if (to >= from) {
+      const s = (Math.pow(A, t) - 1) / (A - 1);        // langsam ansteigend
+      return from + (to - from) * s;
+    }
+    const s = (Math.pow(A, 1 - t) - 1) / (A - 1);      // früh abfallend
+    return to + (from - to) * s;
+  }
+
+  // Equal-Power-Kurve für Crossfades: from*cos + to*sin hält die Gesamtleistung
+  // konstant (kein Lautstärke-Einbruch in der Mitte des Übergangs).
+  function equalGain(from, to, t) {
+    if (t <= 0) return from;
+    if (t >= 1) return to;
+    const a = t * Math.PI / 2;
+    return from * Math.cos(a) + to * Math.sin(a);
+  }
 
   function formatTime(seconds) {
     if (!isFinite(seconds) || seconds < 0) seconds = 0;
@@ -1166,6 +1191,7 @@
       crossfadeMs: 3000,
       plIndex: 0,
       plActive: false,
+      plStopping: false,     // läuft gerade ein manueller Stop-Fade-Out
       plStartTime: null,     // performance.now() bei Playlist-Start (für Restzeit-Countdown)
       plRampAnims: new Map() // audioEl -> rAF id (für parallele Crossfade-Rampen)
     };
@@ -1225,7 +1251,7 @@
         <label class="fade-input crossfade-input">Crossfade <input type="number" class="crossfade" min="0" max="30" step="0.1" value="3">s</label>
       </div>
       <div class="options-row">
-        <label class="checkbox"><input type="checkbox" class="loop-check"> Loop (innerhalb Trim)</label>
+        <label class="checkbox"><input type="checkbox" class="loop-check"> Loop</label>
       </div>
       <div class="output-row">
         <span class="fade-label">Output</span>
@@ -1382,7 +1408,7 @@
         }
         const elapsed = now - startTime;
         const progress = Math.min(elapsed / durationMs, 1);
-        padState.audio.volume = clamp01(fromVol + (toVol - fromVol) * progress);
+        padState.audio.volume = clamp01(fadeCurve(fromVol, toVol, progress));
         if (progress < 1) {
           padState.fadeAnimId = requestAnimationFrame(step);
         } else {
@@ -1473,7 +1499,7 @@
     function plPlayable() { return plMode() && padState.tracks.every(t => t.dataUrl); }
 
     // Volume-Rampe auf einem beliebigen Audio-Element (mehrere parallel möglich)
-    function plRamp(audioEl, from, to, ms, onDone) {
+    function plRamp(audioEl, from, to, ms, onDone, curve) {
       const prev = padState.plRampAnims.get(audioEl);
       if (prev) cancelAnimationFrame(prev);
       if (ms <= 0 || !audioEl) {
@@ -1485,7 +1511,8 @@
       const start = performance.now();
       function step(now) {
         const prog = Math.min((now - start) / ms, 1);
-        audioEl.volume = clamp01(from + (to - from) * prog);
+        const v = curve === 'equal' ? equalGain(from, to, prog) : fadeCurve(from, to, prog);
+        audioEl.volume = clamp01(v);
         if (prog < 1) {
           padState.plRampAnims.set(audioEl, requestAnimationFrame(step));
         } else {
@@ -1635,7 +1662,7 @@
     }
 
     function plOnDeckTick(track) {
-      if (!padState.plActive) return;
+      if (!padState.plActive || padState.plStopping) return;
       const idx = padState.tracks.indexOf(track);
       if (idx === -1 || idx !== padState.plIndex) return;   // nur der aktuelle Track steuert Übergänge
       const a = track.audio;
@@ -1649,6 +1676,14 @@
       if (next && cf > 0 && !track._transitioning && (dur - a.currentTime) <= cf) {
         track._transitioning = true;
         plStartTransition(idx);
+      } else if (!next) {
+        // Letzter Track der Playlist → Fade-Out zum Ende hin
+        const foSec = padState.fadeOutMs / 1000;
+        if (foSec > 0 && !track._fadingOut && (dur - a.currentTime) <= foSec) {
+          track._fadingOut = true;
+          const remMs = Math.max(50, (dur - a.currentTime) * 1000);
+          plRamp(a, a.volume, 0, remMs);
+        }
       }
     }
 
@@ -1668,16 +1703,16 @@
       padState.plIndex = fromIdx + 1;
       plRenderTrackList();
       sendStateUpdate(id);
-      plRamp(b, 0, target, rampMs);
+      plRamp(b, 0, target, rampMs, null, 'equal');
       plRamp(a, a.volume, 0, rampMs, () => {
         try { a.pause(); } catch (_) {}
         try { a.currentTime = 0; } catch (_) {}
         cur._transitioning = false;
-      });
+      }, 'equal');
     }
 
     function plOnDeckEnded(track) {
-      if (!padState.plActive) return;
+      if (!padState.plActive || padState.plStopping) return;
       const idx = padState.tracks.indexOf(track);
       if (idx === -1 || idx !== padState.plIndex) return;   // ausklingender Alt-Deck → ignorieren
       const next = padState.tracks[idx + 1];
@@ -1700,17 +1735,20 @@
     function plStart() {
       if (!plPlayable()) return;
       plCancelRamps();
+      padState.plStopping = false;
       padState.tracks.forEach(t => {
         if (!t.audio) plMakeDeck(t);
         try { t.audio.pause(); } catch (_) {}
         try { t.audio.currentTime = 0; } catch (_) {}
         t.audio.volume = 0;
         t._transitioning = false;
+        t._fadingOut = false;
       });
       padState.plIndex = 0;
       const first = padState.tracks[0];
       const target = clamp01(padState.volume * masterVolume);
-      first.audio.volume = target;
+      const fadeInMs = padState.fadeInMs || 0;
+      first.audio.volume = fadeInMs > 0 ? 0 : target;
       padState.plActive = true;
       padState.playing = true;
       padState.plStartTime = performance.now();
@@ -1719,6 +1757,7 @@
         pad.classList.add('playing');
         playBtn.classList.add('playing');
         setPlayIcon('■');
+        if (fadeInMs > 0) plRamp(first.audio, 0, target, fadeInMs);
         plRenderTrackList();
         refreshButtonTime();
         sendStateUpdate(id);
@@ -1736,12 +1775,31 @@
           try { t.audio.currentTime = 0; } catch (_) {}
           t.audio.volume = 0;
           t._transitioning = false;
+          t._fadingOut = false;
         }
       });
       padState.plActive = false;
+      padState.plStopping = false;
       padState.plIndex = 0;
       resetUiToStopped();
       plRenderTrackList();
+    }
+
+    // Manueller Stop mit Fade-Out (analog zu startStop bei Single-Pads):
+    // blendet alle gerade hörbaren Decks über fadeOutMs aus, dann hart stoppen.
+    function plStopWithFade() {
+      const fadeMs = padState.fadeOutMs || 0;
+      if (!padState.plActive || fadeMs <= 0) { plStopAll(); return; }
+      if (padState.plStopping) { plStopAll(); return; }   // zweiter Stop → sofort
+      const decks = padState.tracks.map(t => t.audio).filter(a => a && !a.paused);
+      if (!decks.length) { plStopAll(); return; }
+      padState.plStopping = true;
+      playBtn.classList.add('fading');
+      setPlayLabel('↘ ' + padState.name);
+      sendStateUpdate(id);
+      let done = 0;
+      const finish = () => { if (++done >= decks.length && padState.plStopping) plStopAll(); };
+      decks.forEach(a => plRamp(a, a.volume, 0, fadeMs, finish));
     }
 
 
@@ -1873,7 +1931,7 @@
     };
     padState.stop = () => {
       if (plMode()) {
-        if (padState.plActive) plStopAll();
+        if (padState.plActive) plStopWithFade();
         return;
       }
       if (!padState.audio || !padState.ready) return;
@@ -1883,7 +1941,8 @@
     padState.toggle = () => {
       if (plMode()) {
         if (!plPlayable()) return;
-        if (padState.plActive || padState.playing) plStopAll();
+        if (padState.plStopping) { plStopAll(); return; }   // zweiter Druck → sofort
+        if (padState.plActive || padState.playing) plStopWithFade();
         else plStart();
         return;
       }
