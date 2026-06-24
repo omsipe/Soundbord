@@ -7,6 +7,8 @@ Electron-Wrapper um das Soundboard mit eingebetteter Companion-Bridge. Ein Klick
 - **Logarithmische Fades** — Fade-In/Out folgen jetzt einer Audio-Taper-Kurve (perzeptuell gleichmäßig) statt linearer Amplitude; Crossfades nutzen eine Equal-Power-Kurve (kein Lautstärke-Einbruch in der Mitte).
 - **Fade-In/Out für Playlists** — Zusätzlich zum Crossfade blenden Playlists am Anfang ein und am Ende aus.
 - **Stop-Fade für Playlists** — Eine laufende Playlist blendet beim manuellen Stoppen über die Out-Zeit aus, statt hart abzuschneiden.
+- **Loop-Crossfade** — Bei aktivem Loop wird vom letzten Track wieder in den ersten übergeblendet (statt hartem Neustart).
+- **Fix: Single → Playlist** — Beim Hinzufügen eines zweiten Tracks erscheint kein „Empty src"-Fehler mehr; der Teardown des Single-Decks wird nicht mehr als Medienfehler gewertet.
 - **Kleinigkeit** — Loop-Label vereinfacht.
 
 ## Neu in Version 1.2.0

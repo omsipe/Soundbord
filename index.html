@@ -1661,6 +1661,12 @@
       return a;
     }
 
+    // Nächster Track-Index – berücksichtigt Loop (letzter → erster). -1 = Ende.
+    function plNextIndex(idx) {
+      if (idx + 1 < padState.tracks.length) return idx + 1;
+      return padState.loop ? 0 : -1;
+    }
+
     function plOnDeckTick(track) {
       if (!padState.plActive || padState.plStopping) return;
       const idx = padState.tracks.indexOf(track);
@@ -1672,12 +1678,12 @@
       plUpdateProgress(idx, a.currentTime);
       refreshButtonTime();
       const cf = padState.crossfadeMs / 1000;
-      const next = padState.tracks[idx + 1];
-      if (next && cf > 0 && !track._transitioning && (dur - a.currentTime) <= cf) {
+      const nextIdx = plNextIndex(idx);
+      if (nextIdx !== -1 && cf > 0 && !track._transitioning && (dur - a.currentTime) <= cf) {
         track._transitioning = true;
-        plStartTransition(idx);
-      } else if (!next) {
-        // Letzter Track der Playlist → Fade-Out zum Ende hin
+        plStartTransition(idx, nextIdx);   // Loop: letzter → erster wird hier mit abgedeckt
+      } else if (nextIdx === -1) {
+        // Wirklich letzter Track (kein Loop) → Fade-Out zum Ende hin
         const foSec = padState.fadeOutMs / 1000;
         if (foSec > 0 && !track._fadingOut && (dur - a.currentTime) <= foSec) {
           track._fadingOut = true;
@@ -1687,9 +1693,9 @@
       }
     }
 
-    function plStartTransition(fromIdx) {
+    function plStartTransition(fromIdx, toIdx) {
       const cur = padState.tracks[fromIdx];
-      const nxt = padState.tracks[fromIdx + 1];
+      const nxt = padState.tracks[toIdx];
       if (!cur || !nxt) return;
       const a = cur.audio;
       const b = nxt.audio || plMakeDeck(nxt);
@@ -1700,7 +1706,8 @@
       try { b.currentTime = 0; } catch (_) {}
       b.volume = 0;
       b.play().catch(() => {});
-      padState.plIndex = fromIdx + 1;
+      padState.plIndex = toIdx;
+      if (toIdx <= fromIdx) padState.plStartTime = performance.now();   // Loop-Umlauf → Countdown neu
       plRenderTrackList();
       sendStateUpdate(id);
       plRamp(b, 0, target, rampMs, null, 'equal');
@@ -2078,6 +2085,9 @@
       }, { once: true });
 
       audio.addEventListener('error', () => {
+        // Leeres src = bewusster Teardown (z. B. Wechsel in den Playlist-Modus),
+        // kein echter Medienfehler → nicht als Fehler anzeigen.
+        if (!audio.getAttribute('src')) return;
         padState.ready = false;
         playBtn.disabled = true;
         playBtn.classList.remove('loading');
@@ -2477,6 +2487,8 @@
     }, { once: true });
 
     audio.addEventListener('error', () => {
+      // Leeres src = bewusster Teardown, kein echter Medienfehler.
+      if (!audio.getAttribute('src')) return;
       padState.ready = false;
       playBtn.disabled = true;
       playBtn.classList.remove('loading');
